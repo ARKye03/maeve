@@ -161,9 +161,10 @@ impl App {
                 }
                 Task::none()
             }
-            Message::TakeSnapshot => window::latest()
-                .and_then(window::screenshot)
-                .map(Message::Snapshot),
+            Message::TakeSnapshot => window::latest().then(|id| match id {
+                Some(id) => window::screenshot(id).map(Message::Snapshot),
+                None => iced::exit(),
+            }),
             Message::Snapshot(shot) => {
                 if let Some(path) = &self.dev.snapshot
                     && let Err(e) = snap::save_png(path, &shot)
