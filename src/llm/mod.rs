@@ -1,5 +1,7 @@
 mod gemini;
 mod limiter;
+pub mod prompts;
+pub mod schema;
 
 use std::future::Future;
 use std::time::Duration;
