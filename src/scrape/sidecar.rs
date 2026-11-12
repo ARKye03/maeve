@@ -170,6 +170,15 @@ impl SidecarScraper {
     }
 }
 
+impl Drop for SidecarScraper {
+    fn drop(&mut self) {
+        // `read_loop` keeps `Shared` alive, so release the child (stdin EOF + kill_on_drop) here.
+        if let Ok(mut conn) = self.shared.conn.try_lock() {
+            conn.take();
+        }
+    }
+}
+
 impl Scraper for SidecarScraper {
     async fn scrape(&self, url: Url) -> Result<Product, ScrapeError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -180,7 +189,18 @@ impl Scraper for SidecarScraper {
         {
             // Register and write under the conn lock so the reader's EOF
             // handling (clear conn, then drain) can never miss this request.
-            let mut guard = self.shared.conn.lock().await;
+            let timed_out = || {
+                ScrapeError::new(
+                    ScrapeErrorKind::Timeout,
+                    format!(
+                        "scraper did not answer within {} s",
+                        self.cmd.timeout.as_secs_f32()
+                    ),
+                )
+            };
+            let mut guard = tokio::time::timeout(self.cmd.timeout, self.shared.conn.lock())
+                .await
+                .map_err(|_| timed_out())?;
             if guard.is_none() {
                 *guard = Some(self.spawn()?);
             }
@@ -192,17 +212,26 @@ impl Scraper for SidecarScraper {
                     tx,
                 },
             );
-            let written = async {
+            let written = tokio::time::timeout(self.cmd.timeout, async {
                 conn.stdin.write_all(line.as_bytes()).await?;
                 conn.stdin.flush().await
-            }
+            })
             .await;
-            if let Err(e) = written {
-                self.shared.pending().remove(&id);
-                *guard = None;
-                return Err(unavailable(format!(
-                    "scraper sidecar stopped accepting requests ({e}); it will restart on the next scrape"
-                )));
+            match written {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    self.shared.pending().remove(&id);
+                    *guard = None;
+                    return Err(unavailable(format!(
+                        "scraper sidecar stopped accepting requests ({e}); it will restart on the next scrape"
+                    )));
+                }
+                Err(_) => {
+                    // Wedged sidecar not draining stdin: drop it (kill_on_drop) so the next scrape respawns.
+                    self.shared.pending().remove(&id);
+                    *guard = None;
+                    return Err(timed_out());
+                }
             }
         }
 
@@ -225,7 +254,12 @@ impl Scraper for SidecarScraper {
 
 async fn read_loop(shared: Arc<Shared>, generation: u64, stdout: ChildStdout) {
     let mut lines = BufReader::new(stdout).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
+    loop {
+        let line = match lines.next_line().await {
+            Ok(Some(line)) => line,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+            Ok(None) | Err(_) => break,
+        };
         // Lines without a numeric id (the `{"ready": true}` banner, stray output) are ignored.
         let Ok(wire) = serde_json::from_str::<Wire>(&line) else {
             continue;
