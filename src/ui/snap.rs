@@ -19,6 +19,7 @@ pub struct DevEnv {
     pub screen: Option<Screen>,
     pub scroll: Option<f32>,
     pub debate: bool,
+    pub failed: bool,
     pub snapshot: Option<PathBuf>,
     pub gemini_key: Option<String>,
 }
@@ -51,6 +52,7 @@ impl DevEnv {
                 .and_then(|v| v.parse::<f32>().ok())
                 .filter(|v| (0.0..=1.0).contains(v)),
             debate: get("MAEVE_DEBATE").is_some_and(|v| !matches!(v.as_str(), "" | "0")),
+            failed: get("MAEVE_FAILED").is_some_and(|v| !matches!(v.as_str(), "" | "0")),
             snapshot: get("MAEVE_SNAPSHOT")
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from),
@@ -113,6 +115,7 @@ mod tests {
             ("MAEVE_SCREEN", "history"),
             ("MAEVE_SCROLL", "0.5"),
             ("MAEVE_DEBATE", "1"),
+            ("MAEVE_FAILED", "1"),
             ("MAEVE_SNAPSHOT", "target/snaps/x.png"),
         ]);
         assert!(e.demo);
@@ -121,6 +124,7 @@ mod tests {
         assert_eq!(e.screen, Some(Screen::History));
         assert_eq!(e.scroll, Some(0.5));
         assert!(e.debate);
+        assert!(e.failed);
         assert_eq!(e.snapshot, Some(PathBuf::from("target/snaps/x.png")));
     }
 

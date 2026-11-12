@@ -1,15 +1,17 @@
 mod header;
 mod input;
+mod paste;
 mod results;
 pub mod snap;
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use iced::theme::Mode;
 use iced::widget::{column, container, operation, scrollable, text};
-use iced::{Element, Length, Subscription, Task, Theme, system, window};
+use iced::{Element, Event, Length, Subscription, Task, Theme, event, system, window};
 
 use crate::demo::demo_comparison;
 use crate::domain::{FxRate, Product};
@@ -51,6 +53,8 @@ pub struct ItemState {
     pub shipping_input: String,
     pub shipping_user_set: bool,
     pub shipping_invalid: bool,
+    /// Problem with the last paste attempt; the item itself stays `Failed`.
+    pub paste_error: Option<String>,
 }
 
 impl ItemState {
@@ -61,6 +65,7 @@ impl ItemState {
             shipping_input: String::new(),
             shipping_user_set: false,
             shipping_invalid: false,
+            paste_error: None,
         }
     }
 }
@@ -121,6 +126,13 @@ pub enum Message {
     FxResolved(Result<FxRate, String>),
     Pipeline(Box<PipelineEvent>),
     Retry(usize),
+    PasteMode(usize),
+    PasteText(usize),
+    PasteImage(usize),
+    FileDropped(PathBuf),
+    PastedText(usize, Option<String>),
+    PastedImage(usize, Result<paste::PastedImage, Key>),
+    Extracted(usize, Result<Box<Product>, String>),
     ToggleDebate,
     Rerun,
     HistorySaved(Result<i64, String>),
@@ -143,6 +155,8 @@ pub struct App {
     pub purpose: String,
     pub custom_presets: Vec<Preset>,
     pub fx: Option<FxRate>,
+    /// Failed row that receives dropped image files.
+    pub paste_row: Option<usize>,
     api_key: Option<String>,
     run_items: Vec<usize>,
     scraper: Arc<SidecarScraper>,
@@ -205,6 +219,7 @@ impl App {
             purpose: String::new(),
             custom_presets: Vec::new(),
             fx: None,
+            paste_row: None,
             stale: false,
             debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
@@ -221,6 +236,9 @@ impl App {
         if let Some(input) = input {
             app.load_input(&input);
             app.input = Some(input);
+        }
+        if app.dev.failed {
+            app.show_failed_row();
         }
         app.sync_llm();
         app
@@ -352,6 +370,16 @@ impl App {
                 Task::none()
             }
             Message::Retry(i) => self.retry(i),
+            Message::PasteMode(i) => {
+                self.toggle_paste_mode(i);
+                Task::none()
+            }
+            Message::PasteText(i) => self.paste_text(i),
+            Message::PasteImage(i) => self.paste_image(i),
+            Message::FileDropped(path) => self.file_dropped(path),
+            Message::PastedText(i, text) => self.pasted_text(i, text),
+            Message::PastedImage(i, image) => self.pasted_image(i, image),
+            Message::Extracted(i, result) => self.extracted(i, result),
             Message::Saved(result) => {
                 if let Err(e) = result {
                     eprintln!("maeve: cannot save settings: {e}");
@@ -414,11 +442,16 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.settings.theme == ThemePref::System {
+        let theme = if self.settings.theme == ThemePref::System {
             system::theme_changes().map(Message::SystemTheme)
         } else {
             Subscription::none()
-        }
+        };
+        let drops = event::listen_with(|event, _, _| match event {
+            Event::Window(window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
+            _ => None,
+        });
+        Subscription::batch([theme, drops])
     }
 }
 

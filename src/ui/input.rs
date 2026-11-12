@@ -15,6 +15,7 @@ use crate::i18n::{Key, Lang, t};
 use crate::llm::prompts::Preset;
 use crate::llm::{GeminiClient, LlmError};
 use crate::pipeline::{CompareInput, ItemInput, PipelineError, PipelineEvent, run_comparison};
+use crate::scrape::ScrapeErrorKind;
 use crate::theme::{self, tokens};
 
 /// Name given to the free-text preset so history has a meaningful label.
@@ -335,6 +336,7 @@ impl App {
             item.shipping_input.clear();
             item.shipping_user_set = false;
             item.shipping_invalid = false;
+            item.paste_error = None;
         }
     }
 
@@ -345,8 +347,13 @@ impl App {
     }
 
     pub(super) fn remove_item(&mut self, i: usize) {
-        if !self.running() && self.items.len() > 2 && i < self.items.len() {
+        if !self.running() && !self.extracting() && self.items.len() > 2 && i < self.items.len() {
             self.items.remove(i);
+            self.paste_row = match self.paste_row {
+                Some(r) if r == i => None,
+                Some(r) if r > i => Some(r - 1),
+                other => other,
+            };
         }
     }
 
@@ -374,6 +381,7 @@ impl App {
             _ => true,
         };
         !self.running()
+            && !self.extracting()
             && criteria_ok
             && self
                 .items
@@ -396,10 +404,12 @@ impl App {
             .collect();
         for &i in &self.run_items {
             let item = &mut self.items[i];
+            item.paste_error = None;
             if !matches!(item.status, ItemStatus::Ready(_)) {
                 item.status = ItemStatus::Scraping;
             }
         }
+        self.paste_row = None;
         self.run = RunState::Running {
             advocates_done: 0,
             waiting: None,
@@ -624,6 +634,7 @@ impl App {
         let lang = self.settings.lang;
         let t_ = tokens(theme::is_dark(&self.theme()));
         let running = self.running();
+        let extracting = self.extracting();
         let item = &self.items[i];
 
         let url = text_input(t(lang, Key::UrlPlaceholder), &item.url)
@@ -656,25 +667,56 @@ impl App {
                 button(text(t(lang, Key::RemoveUrl)).size(13))
                     .padding([6, 10])
                     .style(theme::button_ghost)
-                    .on_press_maybe((!running).then_some(Message::RemoveItem(i))),
+                    .on_press_maybe((!running && !extracting).then_some(Message::RemoveItem(i))),
             );
         }
 
         let mut col = column![top].spacing(4);
         match &item.status {
             ItemStatus::Failed(e) => {
-                col = col.push(
-                    row![
-                        text(e.message.clone()).size(13).color(t_.destructive),
-                        Space::new().width(Length::Fill),
-                        button(text(t(lang, Key::Retry)).size(13))
+                let can_paste = e.kind != ScrapeErrorKind::Unsupported;
+                let mut actions = row![
+                    text(e.message.clone()).size(13).color(t_.destructive),
+                    Space::new().width(Length::Fill),
+                    button(text(t(lang, Key::Retry)).size(13))
+                        .padding([4, 10])
+                        .style(theme::button_secondary)
+                        .on_press_maybe((!running).then_some(Message::Retry(i))),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center);
+                if can_paste {
+                    actions = actions.push(
+                        button(text(t(lang, Key::PasteInstead)).size(13))
                             .padding([4, 10])
                             .style(theme::button_secondary)
-                            .on_press_maybe((!running).then_some(Message::Retry(i))),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                );
+                            .on_press_maybe((!running).then_some(Message::PasteMode(i))),
+                    );
+                }
+                col = col.push(actions);
+                if can_paste && self.paste_row == Some(i) {
+                    col = col.push(
+                        text(t(lang, Key::PasteHint))
+                            .size(13)
+                            .style(theme::text_muted),
+                    );
+                    col = col.push(
+                        row![
+                            button(text(t(lang, Key::PasteText)).size(13))
+                                .padding([4, 10])
+                                .style(theme::button_secondary)
+                                .on_press_maybe((!running).then_some(Message::PasteText(i))),
+                            button(text(t(lang, Key::PasteImage)).size(13))
+                                .padding([4, 10])
+                                .style(theme::button_secondary)
+                                .on_press_maybe((!running).then_some(Message::PasteImage(i))),
+                        ]
+                        .spacing(8),
+                    );
+                }
+                if let Some(error) = &item.paste_error {
+                    col = col.push(text(error.clone()).size(13).color(t_.destructive));
+                }
             }
             ItemStatus::Ready(p) => {
                 if let Some(b) = &breakdown {
