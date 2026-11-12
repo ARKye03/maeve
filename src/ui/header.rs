@@ -5,7 +5,7 @@ use super::{Message, Screen};
 use crate::i18n::{Key, Lang, t};
 use crate::theme::{self, ThemePref};
 
-fn segment<'a>(
+pub(super) fn segment<'a>(
     label: String,
     selected: bool,
     on_press: Message,
@@ -23,7 +23,7 @@ fn segment<'a>(
     .on_press(on_press)
 }
 
-fn segmented<'a>(
+pub(super) fn segmented<'a>(
     items: impl IntoIterator<Item = iced::widget::Button<'a, Message>>,
 ) -> Element<'a, Message> {
     container(row(items.into_iter().map(Element::from)).spacing(2))

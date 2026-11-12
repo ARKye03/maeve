@@ -1,7 +1,9 @@
 mod header;
+mod history;
 mod input;
 mod paste;
 mod results;
+mod settings;
 pub mod snap;
 
 use std::fmt;
@@ -10,19 +12,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iced::theme::Mode;
-use iced::widget::{column, container, operation, scrollable, text};
+use iced::widget::{column, container, operation, scrollable};
 use iced::{Element, Event, Length, Subscription, Task, Theme, event, system, window};
 
 use crate::demo::demo_comparison;
 use crate::domain::{FxRate, Product};
-use crate::i18n::{Key, Lang, t};
+use crate::i18n::{Key, Lang};
 use crate::llm::GeminiClient;
 use crate::llm::prompts::Preset;
 use crate::pipeline::{CompareInput, ComparisonResult, PipelineEvent};
 use crate::scrape::{ScrapeError, SidecarCommand, SidecarScraper};
 use crate::settings::{Settings, ThemePref, load_api_key};
-use crate::store::{Store, default_db_path};
+use crate::store::{ComparisonRecord, HistoryEntry, Store, default_db_path};
 use crate::theme;
+use settings::{SettingsDraft, SettingsField};
 use snap::DevEnv;
 
 const PAGE_SCROLL: &str = "page";
@@ -136,6 +139,20 @@ pub enum Message {
     ToggleDebate,
     Rerun,
     HistorySaved(Result<i64, String>),
+    HistoryLoaded(Vec<HistoryEntry>),
+    OpenHistory(i64),
+    HistoryOpened(Result<Box<ComparisonRecord>, String>),
+    AskDeleteHistory(i64),
+    CancelDeleteHistory,
+    DeleteHistory(i64),
+    HistoryDeleted(Result<i64, String>),
+    SettingsInput(SettingsField, String),
+    SettingsChanged(Box<Settings>),
+    SaveApiKey(String),
+    ApiKeySaved(Result<String, String>),
+    PresetNameChanged(String),
+    SavePreset(Preset),
+    PresetSaved(Result<Preset, String>),
     ScrollSnapshot(f32),
     TakeSnapshot,
     Snapshot(window::Screenshot),
@@ -157,6 +174,12 @@ pub struct App {
     pub fx: Option<FxRate>,
     /// Failed row that receives dropped image files.
     pub paste_row: Option<usize>,
+    pub preset_name: String,
+    pub history: Vec<HistoryEntry>,
+    pub history_confirm: Option<i64>,
+    pub history_error: bool,
+    pub draft: SettingsDraft,
+    pub key_notice: Option<Key>,
     api_key: Option<String>,
     run_items: Vec<usize>,
     scraper: Arc<SidecarScraper>,
@@ -209,6 +232,7 @@ impl App {
         } else {
             (None, None)
         };
+        let draft = SettingsDraft::from_settings(&settings);
         let mut app = Self {
             settings,
             system_mode: Mode::None,
@@ -220,6 +244,12 @@ impl App {
             custom_presets: Vec::new(),
             fx: None,
             paste_row: None,
+            preset_name: String::new(),
+            history: Vec::new(),
+            history_confirm: None,
+            history_error: false,
+            draft,
+            key_notice: None,
             stale: false,
             debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
@@ -239,6 +269,9 @@ impl App {
         }
         if app.dev.failed {
             app.show_failed_row();
+        }
+        if app.dev.demo {
+            app.history = crate::demo::demo_history();
         }
         app.sync_llm();
         app
@@ -310,10 +343,16 @@ impl App {
             }
             Message::Navigate(screen) => {
                 self.screen = screen;
+                if screen == Screen::History {
+                    self.history_confirm = None;
+                    self.history_error = false;
+                    return self.load_history();
+                }
                 Task::none()
             }
             Message::Booted(store, mut settings) => {
                 self.dev.apply(&mut settings);
+                self.draft = SettingsDraft::from_settings(&settings);
                 self.settings = *settings;
                 self.store = store.map(|h| h.0);
                 self.sync_llm();
@@ -369,6 +408,38 @@ impl App {
                 }
                 Task::none()
             }
+            Message::HistoryLoaded(entries) => {
+                self.history = entries;
+                Task::none()
+            }
+            Message::OpenHistory(id) => self.open_history(id),
+            Message::HistoryOpened(record) => self.history_opened(record),
+            Message::AskDeleteHistory(id) => {
+                self.history_confirm = Some(id);
+                Task::none()
+            }
+            Message::CancelDeleteHistory => {
+                self.history_confirm = None;
+                Task::none()
+            }
+            Message::DeleteHistory(id) => self.delete_history(id),
+            Message::HistoryDeleted(result) => self.history_deleted(result),
+            Message::SettingsInput(field, value) => self.settings_input(field, value),
+            Message::SettingsChanged(settings) => self.apply_settings(*settings),
+            Message::SaveApiKey(key) => self.save_key(key),
+            Message::ApiKeySaved(result) => {
+                self.key_saved(result);
+                Task::none()
+            }
+            Message::PresetNameChanged(name) => {
+                self.preset_name = name;
+                Task::none()
+            }
+            Message::SavePreset(preset) => self.save_preset(preset),
+            Message::PresetSaved(result) => {
+                self.preset_saved(result);
+                Task::none()
+            }
             Message::Retry(i) => self.retry(i),
             Message::PasteMode(i) => {
                 self.toggle_paste_mode(i);
@@ -415,17 +486,8 @@ impl App {
                 }
                 page.into()
             }
-            Screen::History | Screen::Settings => {
-                let title = match self.screen {
-                    Screen::History => t(lang, Key::NavHistory),
-                    _ => t(lang, Key::NavSettings),
-                };
-                container(text(title).size(22))
-                    .padding(24)
-                    .width(Length::Fill)
-                    .style(theme::card)
-                    .into()
-            }
+            Screen::History => self.history_view(),
+            Screen::Settings => self.settings_view(),
         };
 
         column![

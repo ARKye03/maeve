@@ -20,6 +20,7 @@ use crate::theme::{self, tokens};
 
 /// Name given to the free-text preset so history has a meaningful label.
 const AD_HOC_NAME: &str = "custom";
+const MAX_PRESET_NAME: usize = 40;
 
 pub(super) fn ad_hoc_preset(criteria: String) -> Preset {
     Preset::Custom {
@@ -67,7 +68,7 @@ pub(super) fn parse_shipping(raw: &str) -> Option<Option<i64>> {
     whole.checked_mul(100)?.checked_add(frac_cents).map(Some)
 }
 
-fn fmt_cents(cents: i64) -> String {
+pub(super) fn fmt_cents(cents: i64) -> String {
     let (whole, frac) = (cents / 100, (cents % 100).abs());
     if frac == 0 {
         whole.to_string()
@@ -76,7 +77,7 @@ fn fmt_cents(cents: i64) -> String {
     }
 }
 
-fn fmt_percent(bp: u32) -> String {
+pub(super) fn fmt_percent(bp: u32) -> String {
     let (whole, frac) = (bp / 100, bp % 100);
     match (frac, frac % 10) {
         (0, _) => format!("{whole}"),
@@ -106,7 +107,9 @@ fn shipping_money(input: &str) -> Option<Money> {
     })
 }
 
-fn input_style(invalid: bool) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+pub(super) fn input_style(
+    invalid: bool,
+) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
     move |theme, status| {
         let mut style = theme::input(theme, status);
         if invalid {
@@ -324,6 +327,72 @@ impl App {
     pub(super) fn set_api_key(&mut self, key: Option<String>) {
         self.api_key = key.filter(|k| !k.trim().is_empty());
         self.sync_llm();
+    }
+
+    fn preset_to_save(&self) -> Option<Preset> {
+        let Preset::Custom { criteria, .. } = &self.preset else {
+            return None;
+        };
+        let name: String = self
+            .preset_name
+            .trim()
+            .chars()
+            .take(MAX_PRESET_NAME)
+            .collect();
+        let criteria = criteria.trim();
+        (is_ad_hoc(&self.preset)
+            && !name.is_empty()
+            && !name.eq_ignore_ascii_case(AD_HOC_NAME)
+            && !criteria.is_empty())
+        .then(|| Preset::Custom {
+            name,
+            criteria: criteria.to_owned(),
+        })
+    }
+
+    pub(super) fn save_preset(&mut self, preset: Preset) -> Task<Message> {
+        let Preset::Custom { name, criteria } = &preset else {
+            return Task::none();
+        };
+        if name.trim().is_empty()
+            || name.eq_ignore_ascii_case(AD_HOC_NAME)
+            || criteria.trim().is_empty()
+        {
+            return Task::none();
+        }
+        let Some(store) = self.store.clone() else {
+            return Task::none();
+        };
+        Task::perform(
+            async move {
+                store
+                    .save_preset(&preset)
+                    .await
+                    .map(|()| preset)
+                    .map_err(|e| e.to_string())
+            },
+            Message::PresetSaved,
+        )
+    }
+
+    pub(super) fn preset_saved(&mut self, result: Result<Preset, String>) {
+        match result {
+            Ok(saved) => {
+                let Preset::Custom { name, .. } = &saved else {
+                    return;
+                };
+                self.custom_presets
+                    .retain(|p| !matches!(p, Preset::Custom { name: n, .. } if n == name));
+                self.custom_presets.push(saved.clone());
+                self.custom_presets.sort_by(|a, b| match (a, b) {
+                    (Preset::Custom { name: a, .. }, Preset::Custom { name: b, .. }) => a.cmp(b),
+                    _ => std::cmp::Ordering::Equal,
+                });
+                self.preset = saved;
+                self.preset_name.clear();
+            }
+            Err(e) => eprintln!("maeve: cannot save preset: {e}"),
+        }
     }
 
     pub(super) fn url_changed(&mut self, i: usize, url: String) {
@@ -750,12 +819,31 @@ impl App {
         if let Preset::Custom { criteria, .. } = &self.preset
             && is_ad_hoc(&self.preset)
         {
+            let save = self.preset_to_save();
             card = card.push(
-                text_input(t(lang, Key::CustomCriteriaPlaceholder), criteria)
-                    .on_input_maybe((!running).then_some(Message::CriteriaChanged))
-                    .padding([8, 12])
-                    .size(14)
-                    .style(input_style(false)),
+                row![
+                    text_input(t(lang, Key::CustomCriteriaPlaceholder), criteria)
+                        .on_input_maybe((!running).then_some(Message::CriteriaChanged))
+                        .padding([8, 12])
+                        .size(14)
+                        .style(input_style(false))
+                        .width(Length::Fill),
+                    text_input(t(lang, Key::PresetNamePlaceholder), &self.preset_name)
+                        .on_input_maybe((!running).then_some(Message::PresetNameChanged))
+                        .padding([8, 12])
+                        .size(14)
+                        .style(input_style(false))
+                        .width(180),
+                    button(text(t(lang, Key::PresetSave)).size(13))
+                        .padding([8, 14])
+                        .style(theme::button_secondary)
+                        .on_press_maybe(
+                            save.filter(|_| !running && self.store.is_some())
+                                .map(Message::SavePreset)
+                        ),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
             );
         }
         card = card.push(
@@ -1243,5 +1331,69 @@ mod tests {
         assert_eq!(fmt_percent(2200), "22");
         assert_eq!(fmt_percent(2250), "22,5");
         assert_eq!(fmt_percent(2205), "22,05");
+    }
+
+    fn custom(name: &str, criteria: &str) -> Preset {
+        Preset::Custom {
+            name: name.into(),
+            criteria: criteria.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn custom_preset_is_saved_through_the_store_and_selected() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            crate::store::Store::open(&dir.path().join("t.db"))
+                .await
+                .unwrap(),
+        );
+        let mut app = App::new(
+            Settings::default(),
+            Some(Arc::clone(&store)),
+            DevEnv::default(),
+        );
+        let _ = app.update(Message::CriteriaChanged("silent".into()));
+        let _ = app.update(Message::PresetNameChanged("  Quiet  ".into()));
+        let preset = custom("Quiet", "silent");
+        assert_eq!(app.preset_to_save(), Some(preset.clone()));
+
+        assert_eq!(app.update(Message::SavePreset(preset.clone())).units(), 1);
+        store.save_preset(&preset).await.unwrap();
+        let _ = app.update(Message::PresetSaved(Ok(preset.clone())));
+        assert_eq!(app.preset, preset);
+        assert_eq!(app.custom_presets, vec![preset.clone()]);
+        assert!(app.preset_name.is_empty());
+        assert_eq!(store.list_presets().await.unwrap(), vec![preset]);
+    }
+
+    #[test]
+    fn preset_needs_a_real_name_and_criteria() {
+        let mut app = blank_app();
+        let _ = app.update(Message::CriteriaChanged("silent".into()));
+        assert_eq!(app.preset_to_save(), None);
+        for name in ["custom", "CUSTOM", "  "] {
+            let _ = app.update(Message::PresetNameChanged(name.into()));
+            assert_eq!(app.preset_to_save(), None, "{name:?}");
+            let task = app.update(Message::SavePreset(custom(name, "silent")));
+            assert_eq!(task.units(), 0);
+        }
+        let _ = app.update(Message::PresetNameChanged("Quiet".into()));
+        assert!(app.preset_to_save().is_some());
+        let _ = app.update(Message::CriteriaChanged("  ".into()));
+        assert_eq!(app.preset_to_save(), None);
+        let _ = app.update(Message::PresetPicked(Preset::BestOverall));
+        assert_eq!(app.preset_to_save(), None);
+    }
+
+    #[test]
+    fn resaving_a_name_replaces_the_chip() {
+        let mut app = blank_app();
+        app.custom_presets = vec![custom("Quiet", "old"), custom("Zed", "z")];
+        let _ = app.update(Message::PresetSaved(Ok(custom("Quiet", "new"))));
+        assert_eq!(
+            app.custom_presets,
+            vec![custom("Quiet", "new"), custom("Zed", "z")]
+        );
     }
 }

@@ -88,6 +88,17 @@ pub fn button_secondary(theme: &Theme, status: button::Status) -> button::Style 
     )
 }
 
+pub fn button_destructive(theme: &Theme, status: button::Status) -> button::Style {
+    let t = tk(theme);
+    filled(
+        t.destructive,
+        t.destructive_foreground,
+        rounded(0.0, Color::TRANSPARENT),
+        status,
+        mix(t.destructive, t.foreground, 0.12),
+    )
+}
+
 pub fn button_ghost(theme: &Theme, status: button::Status) -> button::Style {
     let t = tk(theme);
     filled(

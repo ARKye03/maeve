@@ -26,14 +26,14 @@ const BAR_VALUE_WIDTH: f32 = 110.0;
 
 /// The default sans-serif face has no bold cut here and falls back to a
 /// monospace one, so name a family that ships one on macOS (the only target).
-fn bold() -> Font {
+pub(super) fn bold() -> Font {
     Font {
         weight: Weight::Bold,
         ..Font::with_name("Helvetica Neue")
     }
 }
 
-fn short(s: &str, max: usize) -> String {
+pub(super) fn short(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_owned();
     }
@@ -106,14 +106,14 @@ fn format_score(lang: Lang, score: f32) -> String {
     }
 }
 
-fn section_label<'a>(label: &str) -> Element<'a, Message> {
+pub(super) fn section_label<'a>(label: &str) -> Element<'a, Message> {
     text(label.to_uppercase())
         .size(11)
         .style(theme::text_muted)
         .into()
 }
 
-fn divider<'a>() -> Element<'a, Message> {
+pub(super) fn divider<'a>() -> Element<'a, Message> {
     rule::horizontal(1)
         .style(|theme: &Theme| rule::Style {
             color: tokens(theme::is_dark(theme)).border,

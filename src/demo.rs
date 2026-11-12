@@ -7,6 +7,7 @@ use crate::i18n::Lang;
 use crate::llm::prompts::Preset;
 use crate::llm::schema::{AdvocateOutput, AlignedCell, AlignedRow, Attack, Better, JudgeOutput};
 use crate::pipeline::{CompareInput, ComparisonResult, ItemInput};
+use crate::store::HistoryEntry;
 
 const ML_URL: &str = "https://articulo.mercadolibre.com.uy/MLU-1234567890-mini-pc-ryzen-5";
 const TEMU_URL: &str = "https://www.temu.com/uy/mini-pc-intel-n100-g-601099511223344.html";
@@ -188,6 +189,24 @@ pub fn demo_comparison() -> (CompareInput, ComparisonResult) {
             excluded: Vec::new(),
         },
     )
+}
+
+pub fn demo_history() -> Vec<HistoryEntry> {
+    let (_, result) = demo_comparison();
+    let titles: Vec<String> = result.products.iter().map(|p| p.title.clone()).collect();
+    let winner = titles[result.judge.winner].clone();
+    let entry = |id: i64, created_at: &str, preset: &str| HistoryEntry {
+        id,
+        created_at: created_at.into(),
+        titles: titles.clone(),
+        winner: winner.clone(),
+        preset: preset.into(),
+    };
+    vec![
+        entry(3, "2026-11-12T14:05:00Z", "best_overall"),
+        entry(2, "2026-11-10T19:30:00Z", "quality_price"),
+        entry(1, "2026-11-03T09:12:00Z", "Para la oficina"),
+    ]
 }
 
 #[cfg(test)]
