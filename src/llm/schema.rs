@@ -77,6 +77,18 @@ pub struct Extraction {
     pub reviews: Vec<String>,
 }
 
+pub(super) fn one_line(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 fn invalid(e: impl std::fmt::Display) -> LlmError {
     LlmError::InvalidOutput(e.to_string())
 }
@@ -202,7 +214,8 @@ pub fn parse_advocate(v: Value, n: usize, idx: usize) -> Result<AdvocateOutput, 
 }
 
 /// A cell survives only if its `spec_key` exists in that product's scraped
-/// specs, so a model-invented key or number never reaches the UI.
+/// specs, so a model-invented key never reaches the UI. `numeric` and `unit`
+/// are model-interpreted and not checked against the spec value.
 pub fn parse_judge(v: Value, products: &[Product]) -> Result<JudgeOutput, LlmError> {
     let n = products.len();
     let mut out: JudgeOutput = serde_json::from_value(v).map_err(invalid)?;
@@ -229,10 +242,16 @@ pub fn parse_judge(v: Value, products: &[Product]) -> Result<JudgeOutput, LlmErr
     out.rows.retain(|r| r.cells.len() == n);
     for row in &mut out.rows {
         for (cell, product) in row.cells.iter_mut().zip(products) {
-            let known = cell
-                .spec_key
-                .as_deref()
-                .is_some_and(|k| product.specs.iter().any(|(sk, _)| sk == k));
+            // The prompt shows single-line keys, so accept that form and map back to the original.
+            let matched = cell.spec_key.as_deref().and_then(|k| {
+                product
+                    .specs
+                    .iter()
+                    .find(|(sk, _)| sk == k || one_line(sk) == k)
+                    .map(|(sk, _)| sk.clone())
+            });
+            let known = matched.is_some();
+            cell.spec_key = matched.or(cell.spec_key.take());
             if !known {
                 *cell = AlignedCell {
                     spec_key: None,
@@ -248,7 +267,24 @@ pub fn parse_judge(v: Value, products: &[Product]) -> Result<JudgeOutput, LlmErr
 }
 
 pub fn parse_extraction(v: Value) -> Result<Extraction, LlmError> {
-    serde_json::from_value(v).map_err(invalid)
+    let mut e: Extraction = serde_json::from_value(v).map_err(invalid)?;
+    if [e.price, e.shipping]
+        .into_iter()
+        .flatten()
+        .any(|m| m.cents < 0)
+    {
+        return Err(invalid("price and shipping must not be negative"));
+    }
+    if e.rating
+        .is_some_and(|r| !r.is_finite() || !(0.0..=5.0).contains(&r))
+    {
+        return Err(invalid("rating must be within 0..=5"));
+    }
+    e.image_url = e.image_url.filter(|u| {
+        let u = u.trim().to_ascii_lowercase();
+        u.starts_with("https://") || u.starts_with("http://")
+    });
+    Ok(e)
 }
 
 /// A missing price becomes zero and is flagged in `missing`, never guessed.
@@ -471,6 +507,29 @@ mod tests {
         let p = extraction_into_product(e, Site::MercadoLibre, "u".into());
         assert_eq!(p.price.cents, 0);
         assert!(p.missing.contains(&Field::Price));
+    }
+
+    #[test]
+    fn extraction_rejects_out_of_range_values_and_bad_urls() {
+        let neg = json!({ "title": "T", "price": { "cents": -5, "currency": "UYU" } });
+        assert!(parse_extraction(neg).is_err());
+        assert!(parse_extraction(json!({ "title": "T", "rating": 45.0 })).is_err());
+        let e =
+            parse_extraction(json!({ "title": "T", "image_url": "javascript:alert(1)" })).unwrap();
+        assert_eq!(e.image_url, None);
+        let e =
+            parse_extraction(json!({ "title": "T", "image_url": "https://x.com/a.png" })).unwrap();
+        assert!(e.image_url.is_some());
+    }
+
+    #[test]
+    fn judge_maps_single_line_spec_key_back_to_original() {
+        let products = vec![product(&[("Bat\nería", "20 h")]), product(&[("B", "1")])];
+        let rows = json!([{ "label": "L", "better": "none",
+            "cells": [cell(Some("Bat ería"), Some(20.0)), cell(None, None)] }]);
+        let out = parse_judge(judge(0, json!([5.0, 5.0]), rows), &products).unwrap();
+        assert_eq!(out.rows[0].cells[0].spec_key.as_deref(), Some("Bat\nería"));
+        assert_eq!(out.rows[0].cells[0].numeric, Some(20.0));
     }
 
     #[test]
