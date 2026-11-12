@@ -162,10 +162,10 @@ impl canvas::Program<Message> for Bar {
             &canvas::Path::rounded_rectangle(Point::ORIGIN, bounds.size(), radius),
             self.track,
         );
-        let width = (bounds.width * self.fraction).clamp(3.0, bounds.width);
+        let width = (bounds.width * self.fraction).max(3.0).min(bounds.width);
         let bar = canvas::Path::rounded_rectangle(
             Point::new(0.5, 0.5),
-            Size::new(width - 1.0, bounds.height - 1.0),
+            Size::new((width - 1.0).max(0.0), (bounds.height - 1.0).max(0.0)),
             radius,
         );
         frame.fill(&bar, self.fill);
