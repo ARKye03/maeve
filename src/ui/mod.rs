@@ -149,7 +149,8 @@ pub enum Message {
     SettingsInput(SettingsField, String),
     SettingsChanged(Box<Settings>),
     SaveApiKey(String),
-    ApiKeySaved(Result<String, String>),
+    ApiKeySaved(Result<String, Key>),
+    EditApiKey(bool),
     PresetNameChanged(String),
     SavePreset(Preset),
     PresetSaved(Result<Preset, String>),
@@ -180,6 +181,10 @@ pub struct App {
     pub history_error: bool,
     pub draft: SettingsDraft,
     pub key_notice: Option<Key>,
+    /// Verifying and saving a new key; disables the form.
+    pub key_busy: bool,
+    /// Shows the key input even though a key is configured.
+    pub key_editing: bool,
     api_key: Option<String>,
     run_items: Vec<usize>,
     scraper: Arc<SidecarScraper>,
@@ -272,6 +277,8 @@ impl App {
             history_error: false,
             draft,
             key_notice: None,
+            key_busy: false,
+            key_editing: false,
             stale: false,
             debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
@@ -449,6 +456,10 @@ impl App {
             Message::SaveApiKey(key) => self.save_key(key),
             Message::ApiKeySaved(result) => {
                 self.key_saved(result);
+                Task::none()
+            }
+            Message::EditApiKey(editing) => {
+                self.edit_key(editing);
                 Task::none()
             }
             Message::PresetNameChanged(name) => {

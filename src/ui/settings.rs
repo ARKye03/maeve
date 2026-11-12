@@ -1,7 +1,7 @@
 //! Settings screen: Gemini key (Keychain only), models, costs, language and theme.
 
-use iced::widget::{button, column, container, row, text, text_input, toggler};
-use iced::{Alignment, Element, Length, Task};
+use iced::widget::{Space, button, column, container, row, text, text_input, toggler};
+use iced::{Alignment, Element, Font, Length, Task};
 
 use super::header::{segment, segmented};
 use super::input::{fmt_cents, fmt_percent, input_style, parse_shipping};
@@ -10,6 +10,7 @@ use super::{App, Message};
 use crate::domain::{Currency, Money};
 use crate::fx::validate_rate;
 use crate::i18n::{Key, Lang, t};
+use crate::llm::{GeminiClient, LlmError};
 use crate::settings::{Settings, ThemePref, save_api_key};
 use crate::theme::{self, tokens};
 
@@ -89,6 +90,26 @@ fn field_label<'a>(label: &str) -> Element<'a, Message> {
         .padding([8, 0])
         .width(LABEL_WIDTH)
         .into()
+}
+
+/// Only a key Gemini accepts reaches the Keychain.
+async fn verify_and_save(key: String, rpm: u32) -> Result<String, Key> {
+    match GeminiClient::new(key.clone(), rpm).verify_key().await {
+        Ok(()) => {}
+        Err(LlmError::Auth) => return Err(Key::SettingsKeyInvalid),
+        Err(e) => {
+            eprintln!("maeve: cannot verify API key: {e}");
+            return Err(Key::SettingsKeyUnverified);
+        }
+    }
+    tokio::task::spawn_blocking(move || save_api_key(&key).map(|()| key))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
+        .map_err(|e| {
+            eprintln!("maeve: cannot save API key: {e}");
+            Key::SettingsKeyFailed
+        })
 }
 
 fn fmt_rate(rate: f64) -> String {
@@ -193,30 +214,30 @@ impl App {
             return Task::none();
         }
         self.key_notice = None;
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || save_api_key(&key).map(|()| key))
-                    .await
-                    .map_err(|e| e.to_string())?
-            },
-            Message::ApiKeySaved,
-        )
+        self.key_busy = true;
+        let rpm = self.settings.rpm;
+        Task::perform(verify_and_save(key, rpm), Message::ApiKeySaved)
     }
 
-    pub(super) fn key_saved(&mut self, result: Result<String, String>) {
+    pub(super) fn key_saved(&mut self, result: Result<String, Key>) {
+        self.key_busy = false;
         match result {
             Ok(key) => {
                 if self.draft.api_key.trim() == key {
                     self.draft.api_key.clear();
                 }
                 self.key_notice = None;
+                self.key_editing = false;
                 self.set_api_key(Some(key));
             }
-            Err(e) => {
-                eprintln!("maeve: cannot save API key: {e}");
-                self.key_notice = Some(Key::SettingsKeyFailed);
-            }
+            Err(notice) => self.key_notice = Some(notice),
         }
+    }
+
+    pub(super) fn edit_key(&mut self, editing: bool) {
+        self.key_editing = editing;
+        self.key_notice = None;
+        self.draft.api_key.clear();
     }
 
     fn text_field<'a>(
@@ -282,7 +303,49 @@ impl App {
         )
     }
 
-    fn gemini_card(&self) -> Element<'_, Message> {
+    fn key_configured(&self, key: &str) -> Element<'_, Message> {
+        let lang = self.settings.lang;
+        let t_ = tokens(theme::is_dark(&self.theme()));
+        let tail: String = key
+            .chars()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let summary = container(
+            row![
+                text("✓").size(14).color(t_.chart[0]),
+                text(t(lang, Key::SettingsKeyConfigured)).size(14),
+                Space::new().width(Length::Fill),
+                text(format!("••••{tail}"))
+                    .size(14)
+                    .font(Font::MONOSPACE)
+                    .style(theme::text_muted),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding([8, 12])
+        .width(CONTROL_WIDTH)
+        .style(theme::list_item);
+        let change = button(text(t(lang, Key::SettingsKeyChange)).size(13))
+            .padding([8, 16])
+            .style(theme::button_secondary)
+            .on_press(Message::EditApiKey(true));
+        let status = text(t(lang, Key::SettingsKeyStored))
+            .size(12)
+            .style(theme::text_muted);
+        column![
+            row![summary, change].spacing(8).align_y(Alignment::Center),
+            status
+        ]
+        .spacing(4)
+        .into()
+    }
+
+    fn key_form(&self) -> Element<'_, Message> {
         let lang = self.settings.lang;
         let t_ = tokens(theme::is_dark(&self.theme()));
 
@@ -290,17 +353,35 @@ impl App {
             .text_field(
                 t(lang, Key::SettingsApiKeyPlaceholder),
                 SettingsField::ApiKey,
-                true,
+                !self.key_busy,
             )
             .secure(true)
-            .on_submit(Message::SaveApiKey(self.draft.api_key.clone()));
-        let save = button(text(t(lang, Key::SettingsKeySave)).size(13))
+            .on_submit_maybe(
+                (!self.key_busy).then(|| Message::SaveApiKey(self.draft.api_key.clone())),
+            );
+        let save_label = if self.key_busy {
+            Key::SettingsKeyVerifying
+        } else {
+            Key::SettingsKeySave
+        };
+        let save = button(text(t(lang, save_label)).size(13))
             .padding([8, 16])
             .style(theme::button_primary)
             .on_press_maybe(
-                (!self.draft.api_key.trim().is_empty())
+                (!self.key_busy && !self.draft.api_key.trim().is_empty())
                     .then(|| Message::SaveApiKey(self.draft.api_key.clone())),
             );
+        let mut controls = row![container(key_input).width(CONTROL_WIDTH), save]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        if self.api_key.is_some() {
+            controls = controls.push(
+                button(text(t(lang, Key::Cancel)).size(13))
+                    .padding([8, 16])
+                    .style(theme::button_ghost)
+                    .on_press_maybe((!self.key_busy).then_some(Message::EditApiKey(false))),
+            );
+        }
         let status: Element<'_, Message> = match self.key_notice {
             Some(notice) => text(t(lang, notice)).size(12).color(t_.destructive).into(),
             None => {
@@ -312,17 +393,16 @@ impl App {
                 text(t(lang, key)).size(12).style(theme::text_muted).into()
             }
         };
-        let key_row = row![
-            field_label(t(lang, Key::SettingsApiKey)),
-            column![
-                row![container(key_input).width(CONTROL_WIDTH), save]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                status
-            ]
-            .spacing(4),
-        ]
-        .spacing(16);
+        column![controls, status].spacing(4).into()
+    }
+
+    fn gemini_card(&self) -> Element<'_, Message> {
+        let lang = self.settings.lang;
+        let key_control = match &self.api_key {
+            Some(key) if !self.key_editing => self.key_configured(key),
+            _ => self.key_form(),
+        };
+        let key_row = row![field_label(t(lang, Key::SettingsApiKey)), key_control].spacing(16);
 
         let card = column![
             section_label(t(lang, Key::SettingsGemini)),
@@ -635,7 +715,7 @@ mod tests {
         assert_eq!(task.units(), 1);
         assert!(app.llm.is_none());
 
-        let _ = app.update(Message::ApiKeySaved(Err("denied".into())));
+        let _ = app.update(Message::ApiKeySaved(Err(Key::SettingsKeyFailed)));
         assert!(app.llm.is_none());
         assert_eq!(app.key_notice, Some(Key::SettingsKeyFailed));
 
@@ -647,6 +727,24 @@ mod tests {
         let _ = app.update(Message::ApiKeySaved(Ok("secret".into())));
         assert_eq!(app.llm.as_ref().unwrap().key, "secret");
         assert!(app.draft.api_key.is_empty());
+    }
+
+    #[test]
+    fn changing_a_configured_key_returns_to_the_summary_once_saved() {
+        let mut app = app();
+        app.set_api_key(Some("old".into()));
+        let _ = app.update(Message::EditApiKey(true));
+        assert!(app.key_editing);
+
+        let _ = app.update(Message::SaveApiKey("new".into()));
+        assert!(app.key_busy);
+        let _ = app.update(Message::ApiKeySaved(Err(Key::SettingsKeyInvalid)));
+        assert!(!app.key_busy && app.key_editing);
+        assert_eq!(app.llm.as_ref().unwrap().key, "old");
+
+        let _ = app.update(Message::ApiKeySaved(Ok("new".into())));
+        assert!(!app.key_editing);
+        assert_eq!(app.llm.as_ref().unwrap().key, "new");
     }
 
     #[test]

@@ -14,6 +14,7 @@ const MAX_RETRIES: u32 = 3;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(5);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(120);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const VERIFY_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct GeminiClient {
     http: reqwest::Client,
@@ -48,6 +49,28 @@ impl GeminiClient {
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url.trim_end_matches('/').to_owned();
         self
+    }
+
+    /// Cheapest authenticated call: lists one model. Skips the rate limiter.
+    pub async fn verify_key(&self) -> Result<(), LlmError> {
+        let resp = self
+            .http
+            .get(format!("{}/v1beta/models?pageSize=1", self.base_url))
+            .header("x-goog-api-key", &self.api_key)
+            .timeout(VERIFY_TIMEOUT)
+            .send()
+            .await
+            .map_err(|e| LlmError::Http(e.without_url().to_string()))?;
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let text = resp.text().await.unwrap_or_default();
+        match status {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(LlmError::Auth),
+            StatusCode::BAD_REQUEST if text.contains("API_KEY_INVALID") => Err(LlmError::Auth),
+            s => Err(LlmError::Http(format!("{s}: {}", error_message(&text)))),
+        }
     }
 
     fn build_body(req: &LlmRequest) -> Value {
@@ -413,5 +436,47 @@ mod tests {
         let body = r#"{"error":{"details":[{"@type":"x/google.rpc.Help"},{"@type":"x/google.rpc.RetryInfo","retryDelay":"2s"}]}}"#;
         assert_eq!(retry_delay(body), Some(Duration::from_secs(2)));
         assert_eq!(retry_delay("{}"), None);
+    }
+
+    #[tokio::test]
+    async fn verify_key_accepts_a_listed_model() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1beta/models"))
+            .and(header("x-goog-api-key", KEY))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "models": [] })))
+            .mount(&server)
+            .await;
+        assert!(client(&server).verify_key().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn verify_key_maps_invalid_key_to_auth() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1beta/models"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": { "code": 400, "message": "API key not valid", "details": [{ "reason": "API_KEY_INVALID" }] }
+            })))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client(&server).verify_key().await,
+            Err(LlmError::Auth)
+        ));
+    }
+
+    #[tokio::test]
+    async fn verify_key_reports_other_failures_as_http() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1beta/models"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client(&server).verify_key().await,
+            Err(LlmError::Http(_))
+        ));
     }
 }
