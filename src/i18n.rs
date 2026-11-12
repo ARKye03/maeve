@@ -33,6 +33,8 @@ pub enum Key {
     StatusExtracting,
     Retry,
     PasteInstead,
+    OpenInBrowser,
+    BrowserHint,
     PasteText,
     PasteImage,
     PasteHint,
@@ -40,6 +42,13 @@ pub enum Key {
     ClipboardNoImage,
     ImageUnreadable,
     ExtractFailed,
+    ScrapeBlocked,
+    ScrapeLayout,
+    ScrapeNetwork,
+    ScrapeUnsupported,
+    ScrapeTimeout,
+    ScrapeSidecar,
+    ScrapeBrowserSetup,
     ShippingPlaceholder,
     CostProduct,
     CostShipping,
@@ -131,6 +140,8 @@ impl Key {
         Key::StatusExtracting,
         Key::Retry,
         Key::PasteInstead,
+        Key::OpenInBrowser,
+        Key::BrowserHint,
         Key::PasteText,
         Key::PasteImage,
         Key::PasteHint,
@@ -138,6 +149,13 @@ impl Key {
         Key::ClipboardNoImage,
         Key::ImageUnreadable,
         Key::ExtractFailed,
+        Key::ScrapeBlocked,
+        Key::ScrapeLayout,
+        Key::ScrapeNetwork,
+        Key::ScrapeUnsupported,
+        Key::ScrapeTimeout,
+        Key::ScrapeSidecar,
+        Key::ScrapeBrowserSetup,
         Key::ShippingPlaceholder,
         Key::CostProduct,
         Key::CostShipping,
@@ -253,6 +271,14 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Retry, En) => "Retry",
         (PasteInstead, Es) => "Pegar en su lugar",
         (PasteInstead, En) => "Paste instead",
+        (OpenInBrowser, Es) => "Abrir en el navegador",
+        (OpenInBrowser, En) => "Open in browser",
+        (BrowserHint, Es) => {
+            "Con la extensión de Maeve, la página se lee sola al abrirla en tu navegador."
+        }
+        (BrowserHint, En) => {
+            "With the Maeve extension, the page is read as soon as it opens in your browser."
+        }
         (PasteText, Es) => "Pegar texto",
         (PasteText, En) => "Paste text",
         (PasteImage, Es) => "Pegar imagen",
@@ -269,6 +295,28 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (ImageUnreadable, En) => "Could not read the image (PNG, JPG or WebP up to 10 MB).",
         (ExtractFailed, Es) => "No se pudo extraer el producto",
         (ExtractFailed, En) => "Could not extract the product",
+        (ScrapeBlocked, Es) => {
+            "La tienda bloqueó la lectura automática. Ábrela en el navegador o pega los datos."
+        }
+        (ScrapeBlocked, En) => {
+            "The shop blocked the automated read. Open it in your browser or paste the details."
+        }
+        (ScrapeLayout, Es) => "No se pudo leer el producto de la página.",
+        (ScrapeLayout, En) => "Could not read the product from the page.",
+        (ScrapeNetwork, Es) => "No se pudo cargar la página.",
+        (ScrapeNetwork, En) => "Could not load the page.",
+        (ScrapeUnsupported, Es) => "Enlace no compatible: usa Mercado Libre UY o TEMU.",
+        (ScrapeUnsupported, En) => "Unsupported link: use Mercado Libre UY or TEMU.",
+        (ScrapeTimeout, Es) => "La página tardó demasiado en responder.",
+        (ScrapeTimeout, En) => "The page took too long to respond.",
+        (ScrapeSidecar, Es) => "No se pudo iniciar el lector de productos.",
+        (ScrapeSidecar, En) => "Could not start the product reader.",
+        (ScrapeBrowserSetup, Es) => {
+            "Preparando el navegador del lector (solo la primera vez). Reintenta en un minuto."
+        }
+        (ScrapeBrowserSetup, En) => {
+            "Setting up the reader's browser (first run only). Retry in a minute."
+        }
         (ShippingPlaceholder, Es) => "Envío ($)",
         (ShippingPlaceholder, En) => "Shipping ($)",
         (CostProduct, Es) => "Producto",

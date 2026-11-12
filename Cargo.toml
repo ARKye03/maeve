@@ -6,6 +6,7 @@ description = "Compare Mercado Libre and TEMU listings by landed cost"
 
 [dependencies]
 arboard = "3.7.0"
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 base64 = "0.23.1"
 dirs = "7.0.0"
 iced = { version = "0.14.0", features = ["tokio", "image", "canvas"] }

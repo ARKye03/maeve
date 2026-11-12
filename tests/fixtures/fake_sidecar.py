@@ -27,7 +27,10 @@ def send(obj):
 
 
 def ok(req):
-    send({"id": req["id"], "ok": True, "product": product(req["url"])})
+    found = product(req["url"])
+    if "html" in req:
+        found["title"] = req["html"]
+    send({"id": req["id"], "ok": True, "product": found})
 
 
 send({"ready": True})

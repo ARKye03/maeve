@@ -159,3 +159,21 @@ def test_temu_missing_price_is_layout_error():
     with pytest.raises(ScrapeError) as err:
         temu.parse("<html><body>nothing</body></html>", TEMU_URL)
     assert err.value.kind == "layout"
+
+
+def test_temu_security_check_is_blocked_not_layout():
+    html = (
+        '<script>window.__InitialI18nStore__={"title":"Verificación de seguridad"}</script>'
+        '<meta property="og:title" content="juego 3 piezas">'
+        "<div>Verificación de seguridad</div><p>Haz clic en las imágenes</p>"
+    )
+    with pytest.raises(ScrapeError) as err:
+        temu.parse(html, TEMU_URL)
+    assert err.value.kind == "blocked"
+
+
+def test_temu_i18n_strings_alone_do_not_count_as_blocked():
+    html = '<script>window.__InitialI18nStore__={"title":"Verificación de seguridad"}</script>'
+    with pytest.raises(ScrapeError) as err:
+        temu.parse(html, TEMU_URL)
+    assert err.value.kind == "layout"

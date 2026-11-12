@@ -3,19 +3,26 @@ import sys
 from collections.abc import Awaitable, Callable
 
 from . import router
-from .fetch import stealth
+from .fetch import browser, stealth
 from .protocol import ScrapeError, error_response, ok_response, parse_request
 
 Scrape = Callable[[str], Awaitable[dict]]
+ParsePage = Callable[[str, str], dict]
 
 
-async def handle_line(line: str, scrape: Scrape = router.scrape) -> str:
+async def handle_line(
+    line: str, scrape: Scrape = router.scrape, parse_page: ParsePage = router.parse_page
+) -> str:
     try:
         req = parse_request(line)
     except ValueError as exc:
         return error_response(None, "layout", f"malformed request: {exc}")
     try:
-        return ok_response(req.id, await scrape(req.url))
+        if req.html is not None:
+            product = await asyncio.to_thread(parse_page, req.url, req.html)
+        else:
+            product = await scrape(req.url)
+        return ok_response(req.id, product)
     except ScrapeError as exc:
         return error_response(req.id, exc.kind, exc.message)
     except Exception as exc:
@@ -29,6 +36,7 @@ def emit(line: str) -> None:
 
 async def serve() -> None:
     emit('{"ready": true}')
+    browser.start()
     pending: set[asyncio.Task] = set()
 
     async def respond(line: str) -> None:

@@ -1,3 +1,4 @@
+mod browser;
 mod header;
 mod history;
 mod input;
@@ -136,6 +137,8 @@ pub enum Message {
     PastedText(usize, Option<String>),
     PastedImage(usize, Result<paste::PastedImage, Key>),
     Extracted(usize, Result<Box<Product>, String>),
+    OpenInBrowser(usize),
+    BrowserPage(Box<crate::bridge::Page>),
     ToggleDebate,
     Rerun,
     HistorySaved(Result<i64, String>),
@@ -482,6 +485,11 @@ impl App {
             Message::PastedText(i, text) => self.pasted_text(i, text),
             Message::PastedImage(i, image) => self.pasted_image(i, image),
             Message::Extracted(i, result) => self.extracted(i, result),
+            Message::OpenInBrowser(i) => {
+                self.open_in_browser(i);
+                Task::none()
+            }
+            Message::BrowserPage(page) => self.browser_page(*page),
             Message::Saved(result) => {
                 if let Err(e) = result {
                     eprintln!("maeve: cannot save settings: {e}");
@@ -544,7 +552,12 @@ impl App {
             Event::Window(window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
             _ => None,
         });
-        Subscription::batch([theme, drops])
+        let bridge = if self.dev.demo {
+            Subscription::none()
+        } else {
+            browser::subscription()
+        };
+        Subscription::batch([theme, drops, bridge])
     }
 }
 

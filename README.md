@@ -9,8 +9,8 @@ Desktop app (Rust, `iced`) that compares product listings from Mercado Libre UY 
   ```sh
   cd scraper
   uv sync
-  uv run scrapling install
   ```
+  The sidecar downloads its Chromium build on first use (one time, about a minute).
 - Gemini API key: paste it in Settings; it is stored in the macOS Keychain.
 
 ## Run
@@ -18,6 +18,15 @@ Desktop app (Rust, `iced`) that compares product listings from Mercado Libre UY 
 ```sh
 cargo run --release
 ```
+
+## Browser extension
+
+TEMU often shows the scraper a captcha. The extension in `extension/` (Brave, Chrome, Edge, Firefox) sends product pages you open in your own browser to Maeve, which fills in the failed row.
+
+- Chromium browsers: `brave://extensions` (or `chrome://extensions`) → Developer mode → Load unpacked → `extension/`.
+- Firefox: `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → `extension/manifest.json` (removed on restart unless the add-on is signed).
+- In Maeve, click **Abrir en el navegador** on a failed row; solve the captcha if TEMU asks. The toolbar icon shows ✓ once Maeve received the page.
+- Maeve listens on `127.0.0.1:47821` and only accepts requests carrying the extension's header.
 
 ## Install
 
@@ -28,7 +37,7 @@ cargo bundle --release --format deb  # Linux: target/release/bundle/deb/*.deb
 ```
 
 - macOS: drag `Maeve.app` into `/Applications`.
-- The bundle ships the scraper; it still needs `uv` installed and `uv run scrapling install` run once. Its venv lives in the user data dir (`maeve/scraper-venv`).
+- The bundle ships the scraper; it still needs `uv` installed. Its venv lives in the user data dir (`maeve/scraper-venv`).
 - Icon source: `assets/icon.svg`; PNGs and `maeve.icns` in `assets/icons/`.
 
 ## Develop

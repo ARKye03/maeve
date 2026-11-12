@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use iced::widget::{Space, button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Alignment, Background, Border, Color, Element, Length, Task, Theme};
 
 use super::{App, ItemState, ItemStatus, LlmHandle, Message, RunError, RunState};
@@ -754,9 +754,22 @@ impl App {
         match &item.status {
             ItemStatus::Failed(e) => {
                 let can_paste = e.kind != ScrapeErrorKind::Unsupported;
+                let mut explain = column![
+                    text(t(lang, failure_key(e.kind)))
+                        .size(13)
+                        .color(t_.destructive)
+                ]
+                .spacing(2)
+                .width(Length::Fill);
+                if e.kind != ScrapeErrorKind::Unsupported {
+                    explain = explain.push(
+                        text(failure_detail(&e.message))
+                            .size(12)
+                            .style(theme::text_muted),
+                    );
+                }
                 let mut actions = row![
-                    text(e.message.clone()).size(13).color(t_.destructive),
-                    Space::new().width(Length::Fill),
+                    explain,
                     button(text(t(lang, Key::Retry)).size(13))
                         .padding([4, 12])
                         .style(theme::button_secondary)
@@ -766,6 +779,12 @@ impl App {
                 .align_y(Alignment::Center);
                 if can_paste {
                     actions = actions.push(
+                        button(text(t(lang, Key::OpenInBrowser)).size(13))
+                            .padding([4, 12])
+                            .style(theme::button_secondary)
+                            .on_press(Message::OpenInBrowser(i)),
+                    );
+                    actions = actions.push(
                         button(text(t(lang, Key::PasteInstead)).size(13))
                             .padding([4, 12])
                             .style(theme::button_secondary)
@@ -773,6 +792,13 @@ impl App {
                     );
                 }
                 col = col.push(actions);
+                if can_paste {
+                    col = col.push(
+                        text(t(lang, Key::BrowserHint))
+                            .size(12)
+                            .style(theme::text_muted),
+                    );
+                }
                 if can_paste && self.paste_row == Some(i) {
                     col = col.push(
                         text(t(lang, Key::PasteHint))
@@ -902,6 +928,34 @@ fn wait_secs(d: Duration) -> u64 {
     d.as_secs_f64().ceil() as u64
 }
 
+fn failure_key(kind: ScrapeErrorKind) -> Key {
+    match kind {
+        ScrapeErrorKind::Blocked => Key::ScrapeBlocked,
+        ScrapeErrorKind::Layout => Key::ScrapeLayout,
+        ScrapeErrorKind::Network => Key::ScrapeNetwork,
+        ScrapeErrorKind::Unsupported => Key::ScrapeUnsupported,
+        ScrapeErrorKind::Timeout => Key::ScrapeTimeout,
+        ScrapeErrorKind::SidecarUnavailable => Key::ScrapeSidecar,
+        ScrapeErrorKind::BrowserSetup => Key::ScrapeBrowserSetup,
+    }
+}
+
+/// Scraper errors can carry multi-line tool banners; keep the first line, capped.
+fn failure_detail(message: &str) -> String {
+    const MAX: usize = 160;
+    let line = message
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or_default();
+    if line.chars().count() <= MAX {
+        return line.to_owned();
+    }
+    let mut cut: String = line.chars().take(MAX).collect();
+    cut.push('…');
+    cut
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -943,6 +997,14 @@ mod tests {
 
     fn pipeline(app: &mut App, event: PipelineEvent) {
         let _ = app.update(Message::Pipeline(Box::new(event)));
+    }
+
+    #[test]
+    fn failure_detail_keeps_the_first_line_capped() {
+        let banner = "browser fetch failed: missing\n╔══╗\n║ run patchright install ║";
+        assert_eq!(failure_detail(banner), "browser fetch failed: missing");
+        let long = "x".repeat(300);
+        assert_eq!(failure_detail(&long).chars().count(), 161);
     }
 
     fn scrape_err() -> ScrapeError {

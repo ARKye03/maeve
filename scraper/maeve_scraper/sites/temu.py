@@ -95,6 +95,22 @@ def _reviews(store: dict) -> list[str]:
     return [t for t in texts if t][:MAX_REVIEWS]
 
 
+_VERIFY_MARKERS = (
+    "captcha",
+    "verificación de seguridad",
+    "security verification",
+    "complete la verificación",
+)
+_SCRIPT_OR_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+
+
+def _is_verification_page(html: str) -> bool:
+    """TEMU's i18n blob mentions these phrases on every page, so only visible
+    text counts, and callers only ask once product data is already missing."""
+    visible = _SCRIPT_OR_STYLE.sub(" ", html).lower()
+    return any(marker in visible for marker in _VERIFY_MARKERS)
+
+
 def parse(html: str, url: str) -> dict:
     sel = Selector(html)
     store = _store(html)
@@ -107,8 +123,8 @@ def parse(html: str, url: str) -> dict:
     price = _price(store, url)
 
     if not title or price is None:
-        if "captcha" in html[:5000].lower():
-            raise ScrapeError("blocked", "TEMU served a captcha")
+        if _is_verification_page(html):
+            raise ScrapeError("blocked", "TEMU served a security check (captcha)")
         raise ScrapeError("layout", "could not find title and price on the page")
 
     cents, currency, is_range = price

@@ -62,3 +62,29 @@ def test_loop_survives_malformed_line_and_answers_concurrently():
         return order
 
     assert asyncio.run(go()) == [None, 2, 1]
+
+
+def test_html_request_parses_without_fetching():
+    async def no_fetch(url):
+        raise AssertionError("must not fetch")
+
+    seen = {}
+
+    def parse_page(url, html):
+        seen["args"] = (url, html)
+        return {"title": "x"}
+
+    line = json.dumps({"id": 3, "url": "https://www.temu.com/uy/a-g-1.html", "html": "<html></html>"})
+    out = json.loads(asyncio.run(handle_line(line, no_fetch, parse_page)))
+    assert out == {"id": 3, "ok": True, "product": {"title": "x"}}
+    assert seen["args"] == ("https://www.temu.com/uy/a-g-1.html", "<html></html>")
+
+
+def test_html_request_for_unsupported_site_is_rejected():
+    line = json.dumps({"id": 4, "url": "https://amazon.com/x", "html": "<html></html>"})
+    assert run(line)["error"]["kind"] == "unsupported"
+
+
+def test_non_string_html_is_malformed():
+    out = run(json.dumps({"id": 5, "url": "https://www.temu.com/uy/a-g-1.html", "html": 1}))
+    assert out["id"] is None and out["ok"] is False

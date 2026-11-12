@@ -18,6 +18,8 @@ pub enum ScrapeErrorKind {
     Unsupported,
     Timeout,
     SidecarUnavailable,
+    /// The sidecar is still downloading (or failed to download) its browser.
+    BrowserSetup,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]

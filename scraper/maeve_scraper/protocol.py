@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-KINDS = ("blocked", "layout", "network", "unsupported")
+KINDS = ("blocked", "layout", "network", "unsupported", "browser_setup")
 
 
 class ScrapeError(Exception):
@@ -17,6 +17,8 @@ class ScrapeError(Exception):
 class Request:
     id: int
     url: str
+    # Page HTML captured by the browser extension; parse it instead of fetching.
+    html: str | None = None
 
 
 def parse_request(line: str) -> Request:
@@ -24,7 +26,10 @@ def parse_request(line: str) -> Request:
     data = json.loads(line)
     if not isinstance(data, dict) or "id" not in data or not isinstance(data.get("url"), str):
         raise ValueError("request must be an object with id and url")
-    return Request(id=data["id"], url=data["url"])
+    html = data.get("html")
+    if html is not None and not isinstance(html, str):
+        raise ValueError("html must be a string")
+    return Request(id=data["id"], url=data["url"], html=html)
 
 
 def ok_response(req_id: Any, product: dict) -> str:

@@ -131,6 +131,7 @@ fn kind_from_wire(kind: &str) -> ScrapeErrorKind {
         "blocked" => ScrapeErrorKind::Blocked,
         "network" => ScrapeErrorKind::Network,
         "unsupported" => ScrapeErrorKind::Unsupported,
+        "browser_setup" => ScrapeErrorKind::BrowserSetup,
         _ => ScrapeErrorKind::Layout,
     }
 }
@@ -176,7 +177,7 @@ impl SidecarScraper {
             .map_err(|e| {
                 unavailable(format!(
                     "could not start the scraper sidecar `{}` ({e}); install uv (https://docs.astral.sh/uv/) \
-                     and run `uv sync` and `uv run scrapling install` in the scraper directory",
+                     and run `uv sync` in the scraper directory",
                     self.cmd.program.display()
                 ))
             })?;
@@ -221,9 +222,22 @@ impl Drop for SidecarScraper {
 
 impl Scraper for SidecarScraper {
     async fn scrape(&self, url: Url) -> Result<Product, ScrapeError> {
+        self.call(json!({ "url": url.as_str() })).await
+    }
+}
+
+impl SidecarScraper {
+    /// Parses HTML the browser extension captured, without fetching anything.
+    pub async fn parse_page(&self, url: Url, html: String) -> Result<Product, ScrapeError> {
+        self.call(json!({ "url": url.as_str(), "html": html }))
+            .await
+    }
+
+    async fn call(&self, mut request: Value) -> Result<Product, ScrapeError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        let mut line = json!({ "id": id, "url": url.as_str() }).to_string();
+        request["id"] = json!(id);
+        let mut line = request.to_string();
         line.push('\n');
 
         {
@@ -376,6 +390,14 @@ mod tests {
         let p = s.scrape(temu(1)).await.unwrap();
         assert_eq!(p.site, Site::Temu);
         assert_eq!(p.url, "https://www.temu.com/item-g-1.html");
+        s.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn parse_page_sends_the_html_along() {
+        let s = fake("echo", &[], LONG);
+        let p = s.parse_page(temu(1), "<p>page</p>".into()).await.unwrap();
+        assert_eq!(p.title, "<p>page</p>");
         s.shutdown().await;
     }
 

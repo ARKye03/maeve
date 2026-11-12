@@ -44,6 +44,17 @@ def site_for(url: str) -> str | None:
         return None
 
 
+def parse_page(url: str, html: str) -> dict:
+    site, safe_url = validate_url(url)
+    if site == "mercadolibre":
+        from .sites import mercadolibre
+
+        return mercadolibre.parse(html, safe_url)
+    from .sites import temu
+
+    return temu.parse(html, safe_url)
+
+
 async def scrape(url: str) -> dict:
     site, safe_url = validate_url(url)
     if site == "mercadolibre":
