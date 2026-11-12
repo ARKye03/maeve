@@ -91,6 +91,13 @@ fn uyu(cents: i64) -> String {
     })
 }
 
+fn shipping_override(item: &ItemState) -> Option<Money> {
+    if !item.shipping_user_set {
+        return None;
+    }
+    shipping_money(&item.shipping_input)
+}
+
 fn shipping_money(input: &str) -> Option<Money> {
     parse_shipping(input).flatten().map(|cents| Money {
         cents,
@@ -231,7 +238,10 @@ impl App {
             .map(|i| {
                 let mut item = ItemState::new(i.url.clone());
                 if let Some(p) = &i.product {
-                    item.shipping_input = self.default_shipping(p, i.shipping_override);
+                    if i.shipping_override.is_some() {
+                        item.shipping_input = self.default_shipping(p, i.shipping_override);
+                        item.shipping_user_set = true;
+                    }
                     item.status = ItemStatus::Ready(Box::new(p.clone()));
                 }
                 item
@@ -257,10 +267,21 @@ impl App {
         let fx = self.fx.as_ref()?;
         Some(landed_cost(
             p,
-            shipping_money(&item.shipping_input),
+            shipping_override(item),
             fx,
             &self.settings.cost,
         ))
+    }
+
+    fn shipping_text(&self, i: usize) -> String {
+        let Some(item) = self.items.get(i) else {
+            return String::new();
+        };
+        match &item.status {
+            _ if item.shipping_user_set => item.shipping_input.clone(),
+            ItemStatus::Ready(p) => self.default_shipping(p, None),
+            _ => String::new(),
+        }
     }
 
     pub(super) fn load_presets(&self) -> Task<Message> {
@@ -312,6 +333,7 @@ impl App {
             item.url = url;
             item.status = ItemStatus::Idle;
             item.shipping_input.clear();
+            item.shipping_user_set = false;
             item.shipping_invalid = false;
         }
     }
@@ -339,12 +361,20 @@ impl App {
         item.shipping_invalid = !valid;
         if valid {
             item.shipping_input = value.to_owned();
+            item.shipping_user_set = true;
             self.stale |= self.result.is_some();
         }
     }
 
     fn can_compare(&self) -> bool {
+        let criteria_ok = match &self.preset {
+            Preset::Custom { criteria, .. } if is_ad_hoc(&self.preset) => {
+                !criteria.trim().is_empty()
+            }
+            _ => true,
+        };
         !self.running()
+            && criteria_ok
             && self
                 .items
                 .iter()
@@ -430,7 +460,7 @@ impl App {
                         ItemStatus::Ready(p) => Some((**p).clone()),
                         _ => None,
                     },
-                    shipping_override: shipping_money(&item.shipping_input),
+                    shipping_override: shipping_override(item),
                 }
             })
             .collect();
@@ -457,12 +487,7 @@ impl App {
                     return;
                 };
                 self.items[i].status = match result {
-                    Ok(p) => {
-                        if self.items[i].shipping_input.is_empty() {
-                            self.items[i].shipping_input = self.default_shipping(&p, None);
-                        }
-                        ItemStatus::Ready(Box::new(p))
-                    }
+                    Ok(p) => ItemStatus::Ready(Box::new(p)),
                     Err(e) => ItemStatus::Failed(e),
                 };
             }
@@ -508,6 +533,9 @@ impl App {
     }
 
     pub(super) fn retry(&mut self, i: usize) -> Task<Message> {
+        if !self.can_compare() {
+            return Task::none();
+        }
         if let Some(item) = self.items.get_mut(i)
             && matches!(item.status, ItemStatus::Failed(_))
         {
@@ -609,11 +637,12 @@ impl App {
             .width(Length::Fill);
 
         let breakdown = self.breakdown(i);
-        let unknown_shipping = item.shipping_input.trim().is_empty()
+        let shipping_text = self.shipping_text(i);
+        let unknown_shipping = shipping_text.trim().is_empty()
             && breakdown
                 .as_ref()
                 .is_some_and(|b| b.shipping == ShippingCost::Unknown);
-        let shipping = text_input(t(lang, Key::ShippingPlaceholder), &item.shipping_input)
+        let shipping = text_input(t(lang, Key::ShippingPlaceholder), &shipping_text)
             .on_input_maybe((!running).then_some(move |s: String| Message::ShippingChanged(i, s)))
             .padding([8, 12])
             .size(14)
@@ -910,7 +939,8 @@ mod tests {
             },
         );
         assert!(matches!(app.items[1].status, ItemStatus::Ready(_)));
-        assert_eq!(app.items[1].shipping_input, "0");
+        assert_eq!(app.shipping_text(1), "0");
+        assert!(!app.items[1].shipping_user_set);
         assert!(app.breakdown(1).is_some());
     }
 
@@ -1023,6 +1053,33 @@ mod tests {
     }
 
     #[test]
+    fn default_shipping_is_not_sent_as_an_override() {
+        let mut app = keyed(demo_app());
+        let _ = app.update(Message::Compare);
+        let _ = app.update(Message::FxResolved(Ok(fx())));
+        let input = app.input.as_ref().unwrap();
+        assert!(input.items.iter().all(|i| i.shipping_override.is_none()));
+    }
+
+    #[test]
+    fn default_shipping_follows_the_rate() {
+        let mut app = demo_app();
+        let mut product = demo_comparison().1.products[1].clone();
+        product.shipping = Some(Money {
+            cents: 500,
+            currency: Currency::Usd,
+        });
+        app.items[1].status = ItemStatus::Ready(Box::new(product));
+        app.fx = Some(fx());
+        assert_eq!(app.shipping_text(1), "200");
+        app.fx = Some(FxRate {
+            uyu_per_usd: 42.0,
+            ..fx()
+        });
+        assert_eq!(app.shipping_text(1), "210");
+    }
+
+    #[test]
     fn shipping_override_goes_to_the_pipeline() {
         let mut app = keyed(demo_app());
         let _ = app.update(Message::ShippingChanged(1, "150,50".into()));
@@ -1043,6 +1100,7 @@ mod tests {
         let mut app = demo_app();
         let _ = app.update(Message::UrlChanged(0, "https://other.example/x".into()));
         assert!(matches!(app.items[0].status, ItemStatus::Idle));
+        assert!(!app.items[0].shipping_user_set);
         assert!(app.items[0].shipping_input.is_empty());
         assert!(matches!(app.items[1].status, ItemStatus::Ready(_)));
     }
@@ -1056,7 +1114,8 @@ mod tests {
         let _ = app.update(Message::ShippingChanged(1, "99".into()));
         assert_eq!(app.items.len(), 2);
         assert!(app.items[0].url.starts_with("https://articulo"));
-        assert_eq!(app.items[1].shipping_input, "0");
+        assert_eq!(app.shipping_text(1), "0");
+        assert!(!app.items[1].shipping_user_set);
     }
 
     #[test]

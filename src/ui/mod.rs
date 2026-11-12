@@ -43,7 +43,10 @@ pub enum ItemStatus {
 pub struct ItemState {
     pub url: String,
     pub status: ItemStatus,
+    /// What the user typed; only meaningful when `shipping_user_set`. Otherwise
+    /// the box shows the cost engine's default, recomputed on every view.
     pub shipping_input: String,
+    pub shipping_user_set: bool,
     pub shipping_invalid: bool,
 }
 
@@ -53,6 +56,7 @@ impl ItemState {
             url: url.into(),
             status: ItemStatus::Idle,
             shipping_input: String::new(),
+            shipping_user_set: false,
             shipping_invalid: false,
         }
     }
