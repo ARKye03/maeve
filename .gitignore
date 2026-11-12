@@ -1,2 +1,5 @@
 /target
 .superpowers/
+/scraper/.venv
+__pycache__/
+.pytest_cache/
