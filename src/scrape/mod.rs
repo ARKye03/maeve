@@ -79,7 +79,7 @@ pub fn classify_url(raw: &str) -> Result<(Site, Url), ScrapeError> {
     let (site, variant_keys): (Site, &[&str]) = if host_matches(&host, ML_DOMAIN) {
         (Site::MercadoLibre, &["variation"])
     } else if host_matches(&host, TEMU_DOMAIN) {
-        (Site::Temu, &["sku_id", "skuId"])
+        (Site::Temu, &["goods_id", "sku_id", "skuId"])
     } else {
         return Err(unsupported());
     };

@@ -23,7 +23,7 @@ async def handle_line(line: str, scrape: Scrape = router.scrape) -> str:
 
 
 def emit(line: str) -> None:
-    sys.stdout.write(line + "\n")
+    sys.stdout.write(line.encode("utf-8", "replace").decode("utf-8") + "\n")
     sys.stdout.flush()
 
 

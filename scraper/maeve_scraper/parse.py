@@ -1,5 +1,5 @@
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 _USD_MARKERS = re.compile(r"U\$S|US\$|USD", re.IGNORECASE)
 _UYU_MARKERS = re.compile(r"UYU|\$U|\$", re.IGNORECASE)
@@ -48,20 +48,25 @@ def parse_price(text: str) -> tuple[int, str]:
     else:
         digits = re.sub(r"[.,]", "", raw)
     try:
-        return _to_cents(Decimal(digits)), currency
-    except InvalidOperation as exc:
+        return _checked_cents(Decimal(digits)), currency
+    except (ArithmeticError, ValueError) as exc:
         raise ValueError(f"unparseable price: {text!r}") from exc
+
+
+def _checked_cents(value: Decimal) -> int:
+    # Range-check before int(): huge exponents would otherwise build a giant integer.
+    scaled = (value * 100).to_integral_value()
+    if not 0 < scaled <= _MAX_CENTS:
+        raise ValueError("price out of range")
+    return _to_cents(value)
 
 
 def number_to_cents(value: object) -> int:
     """Convert a machine-readable decimal (JSON-LD, meta tags) where "." is the decimal point."""
     try:
-        cents = _to_cents(Decimal(str(value).strip()))
-    except (InvalidOperation, OverflowError, ValueError) as exc:
+        return _checked_cents(Decimal(str(value).strip()))
+    except (ArithmeticError, ValueError) as exc:
         raise ValueError(f"unparseable number: {value!r}") from exc
-    if abs(cents) > _MAX_CENTS:
-        raise ValueError(f"number out of range: {value!r}")
-    return cents
 
 
 def parse_int(value: object) -> int | None:

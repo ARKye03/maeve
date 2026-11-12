@@ -280,6 +280,7 @@ pub fn parse_extraction(v: Value) -> Result<Extraction, LlmError> {
     {
         return Err(invalid("rating must be within 0..=5"));
     }
+    e.price = e.price.filter(|m| m.cents > 0);
     e.image_url = e.image_url.filter(|u| {
         let u = u.trim().to_ascii_lowercase();
         u.starts_with("https://") || u.starts_with("http://")

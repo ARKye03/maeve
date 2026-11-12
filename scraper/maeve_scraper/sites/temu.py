@@ -43,6 +43,8 @@ def _cents(text: object, minor: object, currency: str) -> tuple[int, str] | None
     if isinstance(minor, (int, float)) and not isinstance(minor, bool) and 0 < minor < 2**53:
         return int(minor), currency
     if isinstance(text, str) and re.search(r"\d", text):
+        if currency == "USD" and not re.search(r"U\$S|US\$|USD", text, re.IGNORECASE):
+            text = f"US$ {text}"
         try:
             return parse_price(text)
         except ValueError:

@@ -19,9 +19,21 @@ def _ld_blocks(sel: Selector) -> list[dict]:
             continue
         stack = data if isinstance(data, list) else [data]
         for item in stack:
-            if isinstance(item, dict):
-                blocks.extend(item["@graph"] if "@graph" in item else [item])
+            if not isinstance(item, dict):
+                continue
+            graph = item.get("@graph")
+            if isinstance(graph, list):
+                blocks.extend(graph)
+            elif isinstance(graph, dict):
+                blocks.append(graph)
+            else:
+                blocks.append(item)
     return [b for b in blocks if isinstance(b, dict)]
+
+
+def _first_of(value: object, kind: type) -> object | None:
+    items = value if isinstance(value, list) else [value]
+    return next((v for v in items if isinstance(v, kind)), None)
 
 
 def _ld_product(sel: Selector) -> dict | None:
@@ -29,7 +41,11 @@ def _ld_product(sel: Selector) -> dict | None:
         kind = block.get("@type")
         kinds = kind if isinstance(kind, list) else [kind]
         if "Product" in kinds:
-            return block
+            return {
+                **block,
+                "name": _first_of(block.get("name"), str),
+                "aggregateRating": _first_of(block.get("aggregateRating"), dict),
+            }
     return None
 
 
