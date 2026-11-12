@@ -19,6 +19,18 @@ Desktop app (Rust, `iced`) that compares product listings from Mercado Libre UY 
 cargo run --release
 ```
 
+## Install
+
+```sh
+cargo install cargo-bundle
+cargo bundle --release            # macOS: target/release/bundle/osx/Maeve.app
+cargo bundle --release --format deb  # Linux: target/release/bundle/deb/*.deb
+```
+
+- macOS: drag `Maeve.app` into `/Applications`.
+- The bundle ships the scraper; it still needs `uv` installed and `uv run scrapling install` run once. Its venv lives in the user data dir (`maeve/scraper-venv`).
+- Icon source: `assets/icon.svg`; PNGs and `maeve.icns` in `assets/icons/`.
+
 ## Develop
 
 - `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`

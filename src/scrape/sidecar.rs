@@ -22,20 +22,59 @@ pub struct SidecarCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    pub env: Vec<(String, PathBuf)>,
     pub timeout: Duration,
 }
 
 impl SidecarCommand {
     pub fn default_uv(scraper_dir: PathBuf) -> Self {
         Self {
-            program: PathBuf::from("uv"),
+            program: find_uv(),
             args: ["run", "python", "-m", "maeve_scraper"]
                 .map(String::from)
                 .to_vec(),
             cwd: scraper_dir,
+            env: Vec::new(),
             timeout: Duration::from_secs(60),
         }
     }
+
+    /// For a scraper shipped read-only inside an installed bundle: keep its venv
+    /// and bytecode in a writable dir and never rewrite the lockfile.
+    pub fn bundled_uv(scraper_dir: PathBuf, state_dir: PathBuf) -> Self {
+        let mut cmd = Self::default_uv(scraper_dir);
+        cmd.args.insert(1, "--frozen".into());
+        cmd.env.push((
+            "UV_PROJECT_ENVIRONMENT".into(),
+            state_dir.join("scraper-venv"),
+        ));
+        cmd.env
+            .push(("PYTHONPYCACHEPREFIX".into(), state_dir.join("pycache")));
+        cmd
+    }
+}
+
+/// Apps launched from Finder or a desktop menu get a minimal PATH, so check the
+/// usual install locations before falling back to a PATH lookup.
+fn find_uv() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    let candidates = [
+        home.join(".local/bin/uv"),
+        home.join(".cargo/bin/uv"),
+        PathBuf::from("/opt/homebrew/bin/uv"),
+        PathBuf::from("/usr/local/bin/uv"),
+        PathBuf::from("/usr/bin/uv"),
+    ];
+    let on_path = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join("uv").is_file()))
+        .unwrap_or(false);
+    if on_path {
+        return PathBuf::from("uv");
+    }
+    candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("uv"))
 }
 
 struct Conn {
@@ -128,6 +167,7 @@ impl SidecarScraper {
         let mut child = Command::new(&self.cmd.program)
             .args(&self.cmd.args)
             .current_dir(&self.cmd.cwd)
+            .envs(self.cmd.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -317,6 +357,7 @@ mod tests {
             program: PathBuf::from("python3"),
             args,
             cwd: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+            env: vec![],
             timeout,
         })
     }
@@ -362,6 +403,7 @@ mod tests {
             program: PathBuf::from("/nonexistent/uv"),
             args: vec![],
             cwd: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+            env: vec![],
             timeout: LONG,
         });
         let err = s.scrape(temu(1)).await.unwrap_err();

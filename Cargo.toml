@@ -2,6 +2,7 @@
 name = "maeve"
 version = "0.1.0"
 edition = "2024"
+description = "Compare Mercado Libre and TEMU listings by landed cost"
 
 [dependencies]
 arboard = "3.7.0"
@@ -24,3 +25,12 @@ url = "2.5.8"
 tempfile = "3.27.0"
 tokio = { version = "1.54.1", features = ["test-util"] }
 wiremock = "0.6.5"
+
+[package.metadata.bundle]
+name = "Maeve"
+identifier = "uy.maeve.app"
+icon = ["assets/icons/32x32.png", "assets/icons/128x128.png", "assets/icons/256x256.png", "assets/icons/512x512.png", "assets/icons/512x512@2x.png", "assets/icons/maeve.icns"]
+resources = ["scraper/pyproject.toml", "scraper/uv.lock", "scraper/.python-version", "scraper/README.md", "scraper/maeve_scraper/**/*.py"]
+category = "Utility"
+short_description = "Compare Mercado Libre and TEMU listings by landed cost"
+osx_minimum_system_version = "11.0"

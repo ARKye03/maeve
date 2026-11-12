@@ -821,7 +821,7 @@ impl App {
             items = items.push(self.item_row(i));
         }
         let add = button(text(t(lang, Key::AddUrl)).size(13))
-            .padding([8, 0])
+            .padding([8, 14])
             .style(theme::button_ghost)
             .on_press_maybe((!running).then_some(Message::AddItem));
 

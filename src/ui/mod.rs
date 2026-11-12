@@ -188,10 +188,32 @@ pub struct App {
     dev: DevEnv,
 }
 
-fn scraper_dir() -> std::path::PathBuf {
-    std::env::var_os("MAEVE_SCRAPER_DIR")
-        .map(Into::into)
-        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scraper"))
+fn scraper_command() -> SidecarCommand {
+    use std::path::{Path, PathBuf};
+
+    if let Some(dir) = std::env::var_os("MAEVE_SCRAPER_DIR") {
+        return SidecarCommand::default_uv(dir.into());
+    }
+    // Installed bundles ship the scraper as a resource: Contents/Resources on
+    // macOS, /usr/lib/maeve on Linux (cargo-bundle's deb layout).
+    let bundled = std::env::current_exe().ok().and_then(|exe| {
+        let bin_dir = exe.parent()?.to_path_buf();
+        [
+            bin_dir.join("../Resources/scraper"),
+            bin_dir.join("../lib/maeve/scraper"),
+        ]
+        .into_iter()
+        .find(|d| d.join("pyproject.toml").is_file())
+    });
+    match bundled {
+        Some(dir) => {
+            let state = dirs::data_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("maeve");
+            SidecarCommand::bundled_uv(dir, state)
+        }
+        None => SidecarCommand::default_uv(Path::new(env!("CARGO_MANIFEST_DIR")).join("scraper")),
+    }
 }
 
 async fn load_key() -> Option<String> {
@@ -254,9 +276,7 @@ impl App {
             debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
             run_items: Vec::new(),
-            scraper: Arc::new(SidecarScraper::new(SidecarCommand::default_uv(
-                scraper_dir(),
-            ))),
+            scraper: Arc::new(SidecarScraper::new(scraper_command())),
             llm: None,
             input: None,
             result,
