@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -23,14 +24,14 @@ use crate::scrape::{ScrapeError, ScrapeErrorKind, Scraper, classify_url};
 
 const EVENT_BUFFER: usize = 64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ItemInput {
     pub url: String,
     pub product: Option<Product>,
     pub shipping_override: Option<Money>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompareInput {
     pub items: Vec<ItemInput>,
     pub preset: Preset,
@@ -46,7 +47,7 @@ pub struct CompareInput {
 /// (`products`, `costs`, `advocates`, `judge` winner/scores/rows, `stats`) is
 /// indexed by position among the products that survived, i.e. the items not
 /// listed in `excluded`, in order.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ComparisonResult {
     pub products: Vec<Product>,
     pub costs: Vec<CostBreakdown>,

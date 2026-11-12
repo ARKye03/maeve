@@ -2,6 +2,7 @@ mod sidecar;
 
 use std::future::Future;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
@@ -9,7 +10,7 @@ use crate::domain::{Product, Site};
 
 pub use sidecar::{SidecarCommand, SidecarScraper};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScrapeErrorKind {
     Blocked,
     Layout,
@@ -19,7 +20,7 @@ pub enum ScrapeErrorKind {
     SidecarUnavailable,
 }
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 #[error("{message}")]
 pub struct ScrapeError {
     pub kind: ScrapeErrorKind,
