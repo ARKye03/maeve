@@ -302,12 +302,12 @@ impl App {
             head = head
                 .push(
                     container(text(t(lang, Key::Stale)).size(12))
-                        .padding([4, 10])
+                        .padding([4, 12])
                         .style(chip_style(Tone::Muted)),
                 )
                 .push(
                     button(text(t(lang, Key::Rerun)).size(13))
-                        .padding([6, 12])
+                        .padding([8, 12])
                         .style(theme::button_secondary)
                         .on_press_maybe((!self.running()).then_some(Message::Rerun)),
                 )
@@ -350,10 +350,10 @@ impl App {
         };
         tooltip(
             container(text(badge).size(10))
-                .padding([1, 5])
+                .padding([4, 8])
                 .style(chip_style(Tone::Muted)),
             container(text(t(lang, Key::AiDerived)).size(12))
-                .padding([6, 10])
+                .padding([8, 12])
                 .style(theme::card),
             Position::Top,
         )
@@ -379,7 +379,7 @@ impl App {
             label
         };
 
-        let mut line = row![label].spacing(6).align_y(Alignment::Center);
+        let mut line = row![label].spacing(8).align_y(Alignment::Center);
         if row.cells[i].ai_derived {
             line = line.push(self.ai_marker());
         }
@@ -399,7 +399,7 @@ impl App {
                 .size(11)
                 .style(theme::text_muted)
             ]
-            .spacing(2)
+            .spacing(4)
             .into()
         } else {
             line.into()
@@ -429,7 +429,7 @@ impl App {
                     column![
                         title,
                         container(text(site_label(product.site)).size(11))
-                            .padding([2, 8])
+                            .padding([4, 8])
                             .style(chip_style(Tone::Muted)),
                     ]
                     .spacing(4),
@@ -458,7 +458,7 @@ impl App {
             for i in 0..result.products.len() {
                 line = line.push(container(self.stat_cell(result, stat, i)).width(value_col));
             }
-            table = table.push(container(line).padding([2, 0]));
+            table = table.push(container(line).padding([4, 0]));
             if n + 1 < result.stats.len() {
                 table = table.push(divider());
             }
@@ -471,7 +471,7 @@ impl App {
         let t_ = tokens(theme::is_dark(&self.theme()));
         let judge_rows = &result.judge.rows;
 
-        let mut groups = column![].spacing(18);
+        let mut groups = column![].spacing(16);
         let mut any = false;
         for stat in &result.stats {
             let Some(values) = bar_values(stat, judge_rows) else {
@@ -491,7 +491,7 @@ impl App {
                 );
             }
 
-            let mut group = column![head].spacing(6);
+            let mut group = column![head].spacing(8);
             for (i, value) in values.iter().enumerate() {
                 let best = stat.best.contains(&i);
                 let shown = text(cell_text(result, stat, i).unwrap_or_default()).size(13);
@@ -545,7 +545,7 @@ impl App {
                 text(arrow).size(15).shaping(text::Shaping::Advanced),
                 text(t(lang, Key::ResultDebate).to_uppercase()).size(11)
             ]
-            .spacing(6)
+            .spacing(8)
             .align_y(Alignment::Center),
         )
         .padding([4, 0])
@@ -563,7 +563,7 @@ impl App {
                     .font(bold()),
                 text(&advocate.argument).size(13),
             ]
-            .spacing(6);
+            .spacing(8);
             if !advocate.strengths.is_empty() {
                 body = body.push(
                     text(t(lang, Key::DebateStrengths))

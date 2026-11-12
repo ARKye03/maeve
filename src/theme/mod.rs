@@ -8,7 +8,7 @@ use iced::{Color, Theme};
 pub use crate::settings::ThemePref;
 pub use styles::{
     bar, button_destructive, button_ghost, button_primary, button_secondary, card, chip, header,
-    input, segment, segmented, table_row, text_muted,
+    input, list_item, segment, segmented, table_row, text_muted,
 };
 
 pub const RADIUS: f32 = 8.0;

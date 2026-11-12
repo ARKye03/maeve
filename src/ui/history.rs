@@ -142,7 +142,7 @@ impl App {
                     .size(12)
                     .style(theme::text_muted),
                 container(text(preset_label(lang, &entry.preset)).size(12))
-                    .padding([2, 8])
+                    .padding([4, 8])
                     .style(chip_style(Tone::Muted)),
             ]
             .spacing(8)
@@ -157,11 +157,11 @@ impl App {
             row![
                 text(t(lang, Key::HistoryDeleteConfirm)).size(13),
                 button(text(t(lang, Key::HistoryDeleteYes)).size(13))
-                    .padding([6, 12])
+                    .padding([8, 12])
                     .style(theme::button_destructive)
                     .on_press(Message::DeleteHistory(entry.id)),
                 button(text(t(lang, Key::Cancel)).size(13))
-                    .padding([6, 12])
+                    .padding([8, 12])
                     .style(theme::button_secondary)
                     .on_press(Message::CancelDeleteHistory),
             ]
@@ -172,11 +172,11 @@ impl App {
             let can_open = !self.running() && !self.extracting();
             row![
                 button(text(t(lang, Key::HistoryOpen)).size(13))
-                    .padding([6, 12])
+                    .padding([8, 12])
                     .style(theme::button_secondary)
                     .on_press_maybe(can_open.then_some(Message::OpenHistory(entry.id))),
                 button(text(t(lang, Key::HistoryDelete)).size(13))
-                    .padding([6, 12])
+                    .padding([8, 12])
                     .style(theme::button_ghost)
                     .on_press(Message::AskDeleteHistory(entry.id)),
             ]
@@ -186,9 +186,9 @@ impl App {
         };
 
         container(row![info, actions].spacing(16).align_y(Alignment::Center))
-            .padding([14, 16])
+            .padding([16, 16])
             .width(Length::Fill)
-            .style(theme::table_row)
+            .style(theme::list_item)
             .into()
     }
 

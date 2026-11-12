@@ -26,15 +26,15 @@ pub(super) fn segment<'a>(
 pub(super) fn segmented<'a>(
     items: impl IntoIterator<Item = iced::widget::Button<'a, Message>>,
 ) -> Element<'a, Message> {
-    container(row(items.into_iter().map(Element::from)).spacing(2))
-        .padding(3)
+    container(row(items.into_iter().map(Element::from)).spacing(4))
+        .padding(4)
         .style(theme::segmented)
         .into()
 }
 
 fn nav<'a>(label: &'static str, active: bool, to: Screen) -> Element<'a, Message> {
     button(text(label).size(14))
-        .padding([6, 12])
+        .padding([8, 12])
         .style(if active {
             theme::button_secondary
         } else {
@@ -101,7 +101,7 @@ pub fn view(lang: Lang, pref: ThemePref, screen: Screen) -> Element<'static, Mes
         .spacing(12)
         .align_y(Alignment::Center),
     )
-    .padding([10, 20])
+    .padding([12, 20])
     .width(Length::Fill)
     .style(theme::header)
     .into()

@@ -207,9 +207,9 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (ThemeDark, En) => "Dark",
         (LangEs, _) => "ES",
         (LangEn, _) => "EN",
-        (UrlPlaceholder, Es) => "Pegá el link de un producto",
+        (UrlPlaceholder, Es) => "Pega el enlace de un producto",
         (UrlPlaceholder, En) => "Paste a product link",
-        (AddUrl, Es) => "+ Agregar link",
+        (AddUrl, Es) => "+ Agregar enlace",
         (AddUrl, En) => "+ Add link",
         (RemoveUrl, Es) => "Quitar",
         (RemoveUrl, En) => "Remove",
@@ -223,7 +223,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (PresetCustom, En) => "Custom",
         (CustomCriteriaPlaceholder, Es) => "Tus criterios, en texto libre",
         (CustomCriteriaPlaceholder, En) => "Your criteria, free text",
-        (PurposePlaceholder, Es) => "Para qué lo vas a usar",
+        (PurposePlaceholder, Es) => "Para qué lo usarás",
         (PurposePlaceholder, En) => "What you will use it for",
         (Compare, Es) => "Comparar",
         (Compare, En) => "Compare",
@@ -248,7 +248,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (PasteImage, Es) => "Pegar imagen",
         (PasteImage, En) => "Paste image",
         (PasteHint, Es) => {
-            "Copiá el texto o una captura de la publicación, o soltá una imagen en la ventana."
+            "Copia el texto o una captura de la publicación, o suelta una imagen en la ventana."
         }
         (PasteHint, En) => "Copy the listing text or a screenshot, or drop an image on the window.",
         (ClipboardEmpty, Es) => "El portapapeles no tiene texto.",
@@ -281,11 +281,11 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (ProgressWaiting, En) => "waiting for Gemini rate limit",
         (ProgressJudging, Es) => "El juez está decidiendo…",
         (ProgressJudging, En) => "The judge is deciding…",
-        (NoApiKey, Es) => "Configurá tu clave de Gemini en Ajustes para comparar.",
+        (NoApiKey, Es) => "Configura tu clave de Gemini en Ajustes para comparar.",
         (NoApiKey, En) => "Set your Gemini key in Settings to compare.",
         (NotEnoughProducts, Es) => "Hacen falta al menos 2 productos legibles para comparar.",
         (NotEnoughProducts, En) => "At least 2 readable products are needed to compare.",
-        (ApiKeyRejected, Es) => "Gemini rechazó tu clave. Revisala en Ajustes.",
+        (ApiKeyRejected, Es) => "Gemini rechazó tu clave. Revísala en Ajustes.",
         (ApiKeyRejected, En) => "Gemini rejected your key. Check it in Settings.",
         (ResultVerdict, Es) => "Veredicto",
         (ResultVerdict, En) => "Verdict",
@@ -299,7 +299,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (Rerun, Es) => "Volver a ejecutar",
         (Rerun, En) => "Re-run",
         (ExcludedBanner, Es) => {
-            "Estos productos quedaron fuera de la comparación. Corregilos y volvé a Comparar."
+            "Estos productos quedaron fuera de la comparación. Corrígelos y vuelve a Comparar."
         }
         (ExcludedBanner, En) => {
             "These items were left out of the comparison. Fix them and Compare again."
@@ -338,7 +338,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (SettingsGemini, En) => "Gemini",
         (SettingsApiKey, Es) => "Clave de API",
         (SettingsApiKey, En) => "API key",
-        (SettingsApiKeyPlaceholder, Es) => "Pegá tu clave de Gemini",
+        (SettingsApiKeyPlaceholder, Es) => "Pega tu clave de Gemini",
         (SettingsApiKeyPlaceholder, En) => "Paste your Gemini key",
         (SettingsKeySave, Es) => "Guardar clave",
         (SettingsKeySave, En) => "Save key",
@@ -354,7 +354,7 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (SettingsAdvocateModel, En) => "Advocate model",
         (SettingsJudgeModel, Es) => "Modelo del juez",
         (SettingsJudgeModel, En) => "Judge model",
-        (SettingsRpm, Es) => "Pedidos por minuto",
+        (SettingsRpm, Es) => "Solicitudes por minuto",
         (SettingsRpm, En) => "Requests per minute",
         (SettingsCosts, Es) => "Costos",
         (SettingsCosts, En) => "Costs",

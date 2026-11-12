@@ -157,7 +157,7 @@ fn status_chip<'a>(lang: Lang, status: &ItemStatus) -> Option<Element<'a, Messag
     };
     Some(
         container(text(t(lang, key)).size(12))
-            .padding([4, 10])
+            .padding([4, 12])
             .style(chip_style(tone))
             .into(),
     )
@@ -666,7 +666,7 @@ impl App {
         let running = self.running();
         let chip = |label: String, selected: bool, preset: Preset| {
             button(text(label).size(13))
-                .padding([6, 14])
+                .padding([8, 16])
                 .style(theme::chip(selected))
                 .on_press_maybe((!running).then_some(Message::PresetPicked(preset)))
         };
@@ -736,7 +736,7 @@ impl App {
         if self.items.len() > 2 {
             top = top.push(
                 button(text(t(lang, Key::RemoveUrl)).size(13))
-                    .padding([6, 10])
+                    .padding([8, 12])
                     .style(theme::button_ghost)
                     .on_press_maybe((!running && !extracting).then_some(Message::RemoveItem(i))),
             );
@@ -750,7 +750,7 @@ impl App {
                     text(e.message.clone()).size(13).color(t_.destructive),
                     Space::new().width(Length::Fill),
                     button(text(t(lang, Key::Retry)).size(13))
-                        .padding([4, 10])
+                        .padding([4, 12])
                         .style(theme::button_secondary)
                         .on_press_maybe((!running).then_some(Message::Retry(i))),
                 ]
@@ -759,7 +759,7 @@ impl App {
                 if can_paste {
                     actions = actions.push(
                         button(text(t(lang, Key::PasteInstead)).size(13))
-                            .padding([4, 10])
+                            .padding([4, 12])
                             .style(theme::button_secondary)
                             .on_press_maybe((!running).then_some(Message::PasteMode(i))),
                     );
@@ -774,11 +774,11 @@ impl App {
                     col = col.push(
                         row![
                             button(text(t(lang, Key::PasteText)).size(13))
-                                .padding([4, 10])
+                                .padding([4, 12])
                                 .style(theme::button_secondary)
                                 .on_press_maybe((!running).then_some(Message::PasteText(i))),
                             button(text(t(lang, Key::PasteImage)).size(13))
-                                .padding([4, 10])
+                                .padding([4, 12])
                                 .style(theme::button_secondary)
                                 .on_press_maybe((!running).then_some(Message::PasteImage(i))),
                         ]
@@ -813,7 +813,7 @@ impl App {
             items = items.push(self.item_row(i));
         }
         let add = button(text(t(lang, Key::AddUrl)).size(13))
-            .padding([6, 10])
+            .padding([8, 0])
             .style(theme::button_ghost)
             .on_press_maybe((!running).then_some(Message::AddItem));
 
@@ -837,7 +837,7 @@ impl App {
                         .style(input_style(false))
                         .width(180),
                     button(text(t(lang, Key::PresetSave)).size(13))
-                        .padding([8, 14])
+                        .padding([8, 16])
                         .style(theme::button_secondary)
                         .on_press_maybe(
                             save.filter(|_| !running && self.store.is_some())
@@ -858,7 +858,7 @@ impl App {
 
         let mut action = row![
             button(text(t(lang, Key::Compare)).size(14))
-                .padding([9, 24])
+                .padding([8, 24])
                 .style(theme::button_primary)
                 .on_press_maybe(self.can_compare().then_some(Message::Compare))
         ]

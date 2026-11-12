@@ -38,7 +38,7 @@ User named none. My call: the app must never present invented numbers as scraped
 - LLM: Gemini API.
 - Storage: Turso, local embedded (`turso` crate, 0.8.x). No server.
 - Platform: macOS (user's machine). Personal use only.
-- `docs/theme.css` is reference only; delete it once the iced theme is ported. Token values are copied below so the doc stands alone.
+- The original tweakcn reference CSS has been removed after porting; token values are copied below so the doc stands alone.
 
 ## Architecture
 

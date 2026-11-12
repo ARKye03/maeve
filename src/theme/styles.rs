@@ -188,6 +188,15 @@ pub fn table_row(theme: &Theme) -> container::Style {
     }
 }
 
+pub fn list_item(theme: &Theme) -> container::Style {
+    let t = tk(theme);
+    container::Style {
+        text_color: Some(t.foreground),
+        border: rounded(1.0, t.border),
+        ..container::Style::default()
+    }
+}
+
 pub fn bar(series: usize) -> impl Fn(&Theme) -> progress_bar::Style {
     move |theme| {
         let t = tk(theme);

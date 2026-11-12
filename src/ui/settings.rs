@@ -86,7 +86,7 @@ impl SettingsDraft {
 
 fn field_label<'a>(label: &str) -> Element<'a, Message> {
     container(text(label.to_owned()).size(14))
-        .padding([9, 0])
+        .padding([8, 0])
         .width(LABEL_WIDTH)
         .into()
 }
@@ -295,7 +295,7 @@ impl App {
             .secure(true)
             .on_submit(Message::SaveApiKey(self.draft.api_key.clone()));
         let save = button(text(t(lang, Key::SettingsKeySave)).size(13))
-            .padding([8, 14])
+            .padding([8, 16])
             .style(theme::button_primary)
             .on_press_maybe(
                 (!self.draft.api_key.trim().is_empty())
@@ -356,7 +356,7 @@ impl App {
             next.cost.regimen_simplificado = on;
             Message::SettingsChanged(Box::new(next))
         }))
-        .padding([9, 0]);
+        .padding([8, 0]);
         let regimen_percent = self.labelled(
             t(lang, Key::SettingsRegimenPercent),
             self.text_field("", SettingsField::Regimen, regimen_on),

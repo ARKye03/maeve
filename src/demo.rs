@@ -76,7 +76,7 @@ fn products() -> Vec<Product> {
                 ("Procesador", "Intel N100"),
             ]),
             reviews: vec![
-                "Anda bien para oficina, se calienta un poco.".into(),
+                "Funciona bien para oficina, se calienta un poco.".into(),
                 "Tardó tres semanas pero llegó completa.".into(),
             ],
             missing: vec![Field::Shipping],
@@ -151,7 +151,7 @@ pub fn demo_comparison() -> (CompareInput, ComparisonResult) {
         scores: vec![8.4, 6.7],
         verdict: "La Mini PC Ryzen 5 gana: más RAM, más almacenamiento, mejor valoración y \
                   garantía local. La de Temu solo conviene si el presupuesto es lo único que \
-                  importa y no hay apuro."
+                  importa y no hay prisa."
             .into(),
         rows,
     };
