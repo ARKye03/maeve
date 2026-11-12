@@ -25,6 +25,8 @@ pub enum Key {
     CustomCriteriaPlaceholder,
     PurposePlaceholder,
     Compare,
+    NavHistory,
+    NavSettings,
 }
 
 impl Key {
@@ -45,6 +47,8 @@ impl Key {
         Key::CustomCriteriaPlaceholder,
         Key::PurposePlaceholder,
         Key::Compare,
+        Key::NavHistory,
+        Key::NavSettings,
     ];
 }
 
@@ -81,6 +85,10 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (PurposePlaceholder, En) => "What you will use it for",
         (Compare, Es) => "Comparar",
         (Compare, En) => "Compare",
+        (NavHistory, Es) => "Historial",
+        (NavHistory, En) => "History",
+        (NavSettings, Es) => "Ajustes",
+        (NavSettings, En) => "Settings",
     }
 }
 

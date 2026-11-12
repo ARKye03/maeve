@@ -190,3 +190,52 @@ pub fn bar(series: usize) -> impl Fn(&Theme) -> progress_bar::Style {
         }
     }
 }
+
+pub fn header(theme: &Theme) -> container::Style {
+    let t = tk(theme);
+    container::Style {
+        text_color: Some(t.card_foreground),
+        background: Some(Background::Color(t.card)),
+        border: Border {
+            color: t.border,
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        shadow: shadow(),
+        snap: true,
+    }
+}
+
+pub fn segmented(theme: &Theme) -> container::Style {
+    let t = tk(theme);
+    container::Style {
+        background: Some(Background::Color(t.muted)),
+        border: rounded(0.0, Color::TRANSPARENT),
+        ..container::Style::default()
+    }
+}
+
+pub fn segment(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let t = tk(theme);
+        if selected {
+            let mut s = filled(
+                t.card,
+                t.foreground,
+                rounded(0.0, Color::TRANSPARENT),
+                status,
+                t.card,
+            );
+            s.shadow = shadow();
+            s
+        } else {
+            filled(
+                Color::TRANSPARENT,
+                t.muted_foreground,
+                rounded(0.0, Color::TRANSPARENT),
+                status,
+                t.accent,
+            )
+        }
+    }
+}

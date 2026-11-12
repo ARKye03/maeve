@@ -1,3 +1,4 @@
+pub mod demo;
 pub mod domain;
 pub mod fx;
 pub mod i18n;
@@ -7,3 +8,4 @@ pub mod scrape;
 pub mod settings;
 pub mod store;
 pub mod theme;
+pub mod ui;
