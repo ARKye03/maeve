@@ -1,17 +1,23 @@
 mod header;
+mod input;
 pub mod snap;
 
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
 use iced::theme::Mode;
-use iced::widget::{column, container, text};
+use iced::widget::{column, container, scrollable, text};
 use iced::{Element, Length, Subscription, Task, Theme, system, window};
 
 use crate::demo::demo_comparison;
+use crate::domain::{FxRate, Product};
 use crate::i18n::{Key, Lang, t};
-use crate::pipeline::{CompareInput, ComparisonResult};
-use crate::settings::{Settings, ThemePref};
+use crate::llm::GeminiClient;
+use crate::llm::prompts::Preset;
+use crate::pipeline::{CompareInput, ComparisonResult, PipelineEvent};
+use crate::scrape::{ScrapeError, SidecarCommand, SidecarScraper};
+use crate::settings::{Settings, ThemePref, load_api_key};
 use crate::store::{Store, default_db_path};
 use crate::theme::{self, tokens};
 use snap::DevEnv;
@@ -22,6 +28,60 @@ pub enum Screen {
     Compare,
     History,
     Settings,
+}
+
+#[derive(Debug, Clone)]
+pub enum ItemStatus {
+    Idle,
+    Scraping,
+    Ready(Box<Product>),
+    Failed(ScrapeError),
+    Extracting,
+}
+
+#[derive(Debug, Clone)]
+pub struct ItemState {
+    pub url: String,
+    pub status: ItemStatus,
+    pub shipping_input: String,
+    pub shipping_invalid: bool,
+}
+
+impl ItemState {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            status: ItemStatus::Idle,
+            shipping_input: String::new(),
+            shipping_invalid: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunError {
+    NoApiKey,
+    NotEnoughProducts,
+    Auth,
+    Other(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum RunState {
+    #[default]
+    Idle,
+    Running {
+        advocates_done: usize,
+        waiting: Option<Duration>,
+        judging: bool,
+    },
+    Error(RunError),
+}
+
+struct LlmHandle {
+    client: Arc<GeminiClient>,
+    key: String,
+    rpm: u32,
 }
 
 #[derive(Clone)]
@@ -41,6 +101,19 @@ pub enum Message {
     Navigate(Screen),
     Booted(Option<StoreHandle>, Box<Settings>),
     Saved(Result<(), String>),
+    ApiKeyLoaded(Option<String>),
+    PresetsLoaded(Vec<Preset>),
+    UrlChanged(usize, String),
+    AddItem,
+    RemoveItem(usize),
+    PresetPicked(Preset),
+    CriteriaChanged(String),
+    PurposeChanged(String),
+    ShippingChanged(usize, String),
+    Compare,
+    FxResolved(Result<FxRate, String>),
+    Pipeline(Box<PipelineEvent>),
+    Retry(usize),
     TakeSnapshot,
     Snapshot(window::Screenshot),
 }
@@ -51,8 +124,39 @@ pub struct App {
     pub screen: Screen,
     pub input: Option<CompareInput>,
     pub result: Option<ComparisonResult>,
+    pub stale: bool,
+    pub items: Vec<ItemState>,
+    pub run: RunState,
+    pub preset: Preset,
+    pub purpose: String,
+    pub custom_presets: Vec<Preset>,
+    pub fx: Option<FxRate>,
+    api_key: Option<String>,
+    run_items: Vec<usize>,
+    scraper: Arc<SidecarScraper>,
+    llm: Option<LlmHandle>,
     store: Option<Arc<Store>>,
     dev: DevEnv,
+}
+
+fn scraper_dir() -> std::path::PathBuf {
+    std::env::var_os("MAEVE_SCRAPER_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scraper"))
+}
+
+async fn load_key() -> Option<String> {
+    match tokio::task::spawn_blocking(load_api_key).await {
+        Ok(Ok(key)) => key,
+        Ok(Err(e)) => {
+            eprintln!("maeve: cannot read API key: {e}");
+            None
+        }
+        Err(e) => {
+            eprintln!("maeve: key lookup failed: {e}");
+            None
+        }
+    }
 }
 
 async fn open_store() -> (Option<StoreHandle>, Box<Settings>) {
@@ -79,15 +183,34 @@ impl App {
         } else {
             (None, None)
         };
-        Self {
+        let mut app = Self {
             settings,
             system_mode: Mode::None,
             screen: dev.screen.unwrap_or_default(),
-            input,
+            items: vec![ItemState::new(""), ItemState::new("")],
+            run: RunState::Idle,
+            preset: Preset::BestOverall,
+            purpose: String::new(),
+            custom_presets: Vec::new(),
+            fx: None,
+            stale: false,
+            api_key: dev.gemini_key.clone(),
+            run_items: Vec::new(),
+            scraper: Arc::new(SidecarScraper::new(SidecarCommand::default_uv(
+                scraper_dir(),
+            ))),
+            llm: None,
+            input: None,
             result,
             store,
             dev,
+        };
+        if let Some(input) = input {
+            app.load_input(&input);
+            app.input = Some(input);
         }
+        app.sync_llm();
+        app
     }
 
     pub fn boot() -> (Self, Task<Message>) {
@@ -98,6 +221,9 @@ impl App {
                 Message::Booted(store, settings)
             }),
         ];
+        if dev.snapshot.is_none() && dev.gemini_key.is_none() {
+            tasks.push(Task::perform(load_key(), Message::ApiKeyLoaded));
+        }
         if dev.snapshot.is_some() {
             tasks.push(Task::perform(tokio::time::sleep(snap::SETTLE), |()| {
                 Message::TakeSnapshot
@@ -153,8 +279,52 @@ impl App {
                 self.dev.apply(&mut settings);
                 self.settings = *settings;
                 self.store = store.map(|h| h.0);
+                self.sync_llm();
+                self.load_presets()
+            }
+            Message::ApiKeyLoaded(key) => {
+                self.set_api_key(key);
                 Task::none()
             }
+            Message::PresetsLoaded(presets) => {
+                self.custom_presets = presets;
+                Task::none()
+            }
+            Message::UrlChanged(i, url) => {
+                self.url_changed(i, url);
+                Task::none()
+            }
+            Message::AddItem => {
+                self.add_item();
+                Task::none()
+            }
+            Message::RemoveItem(i) => {
+                self.remove_item(i);
+                Task::none()
+            }
+            Message::PresetPicked(preset) => {
+                self.preset = preset;
+                Task::none()
+            }
+            Message::CriteriaChanged(criteria) => {
+                self.preset = input::ad_hoc_preset(criteria);
+                Task::none()
+            }
+            Message::PurposeChanged(purpose) => {
+                self.purpose = purpose;
+                Task::none()
+            }
+            Message::ShippingChanged(i, value) => {
+                self.shipping_changed(i, &value);
+                Task::none()
+            }
+            Message::Compare => self.compare(),
+            Message::FxResolved(fx) => self.fx_resolved(fx),
+            Message::Pipeline(event) => {
+                self.on_pipeline(*event);
+                Task::none()
+            }
+            Message::Retry(i) => self.retry(i),
             Message::Saved(result) => {
                 if let Err(e) = result {
                     eprintln!("maeve: cannot save settings: {e}");
@@ -180,35 +350,43 @@ impl App {
         let lang = self.settings.lang;
         let t_ = tokens(theme::is_dark(&self.theme()));
 
-        let title = match self.screen {
-            Screen::Compare => t(lang, Key::Compare),
-            Screen::History => t(lang, Key::NavHistory),
-            Screen::Settings => t(lang, Key::NavSettings),
-        };
-        let mut body = column![text(title).size(22)].spacing(12);
-        if let Some(result) = &self.result
-            && self.screen == Screen::Compare
-        {
-            body = body
-                .push(
-                    text(&result.products[result.judge.winner].title)
-                        .size(18)
-                        .color(t_.primary),
-                )
-                .push(text(&result.judge.verdict).style(theme::text_muted));
-        }
-
-        column![
-            header::view(lang, self.settings.theme, self.screen),
-            container(
-                container(body)
+        let page: Element<'_, Message> = match self.screen {
+            Screen::Compare => {
+                let mut page = column![self.input_card()].spacing(16);
+                if let Some(result) = &self.result {
+                    page = page.push(
+                        container(
+                            column![
+                                text(&result.products[result.judge.winner].title)
+                                    .size(18)
+                                    .color(t_.primary),
+                                text(&result.judge.verdict).style(theme::text_muted),
+                            ]
+                            .spacing(12),
+                        )
+                        .padding(24)
+                        .width(Length::Fill)
+                        .style(theme::card),
+                    );
+                }
+                page.into()
+            }
+            Screen::History | Screen::Settings => {
+                let title = match self.screen {
+                    Screen::History => t(lang, Key::NavHistory),
+                    _ => t(lang, Key::NavSettings),
+                };
+                container(text(title).size(22))
                     .padding(24)
                     .width(Length::Fill)
                     .style(theme::card)
-            )
-            .padding(24)
-            .width(Length::Fill)
-            .height(Length::Fill),
+                    .into()
+            }
+        };
+
+        column![
+            header::view(lang, self.settings.theme, self.screen),
+            scrollable(container(page).padding(24).width(Length::Fill)).height(Length::Fill),
         ]
         .into()
     }

@@ -18,6 +18,7 @@ pub struct DevEnv {
     pub lang: Option<Lang>,
     pub screen: Option<Screen>,
     pub snapshot: Option<PathBuf>,
+    pub gemini_key: Option<String>,
 }
 
 impl DevEnv {
@@ -47,6 +48,11 @@ impl DevEnv {
             snapshot: get("MAEVE_SNAPSHOT")
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from),
+            gemini_key: if cfg!(debug_assertions) {
+                get("MAEVE_GEMINI_KEY").filter(|v| !v.is_empty())
+            } else {
+                None
+            },
         }
     }
 
