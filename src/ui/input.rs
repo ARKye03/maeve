@@ -436,12 +436,10 @@ impl App {
         let Some(item) = self.items.get_mut(i) else {
             return;
         };
+        item.shipping_input = value.to_owned();
+        item.shipping_user_set = true;
         item.shipping_invalid = !valid;
-        if valid {
-            item.shipping_input = value.to_owned();
-            item.shipping_user_set = true;
-            self.stale |= self.result.is_some();
-        }
+        self.stale |= self.result.is_some();
     }
 
     fn can_compare(&self) -> bool {
@@ -454,6 +452,7 @@ impl App {
         !self.running()
             && !self.extracting()
             && criteria_ok
+            && !self.items.iter().any(|i| i.shipping_invalid)
             && self
                 .items
                 .iter()
@@ -721,7 +720,16 @@ impl App {
             && breakdown
                 .as_ref()
                 .is_some_and(|b| b.shipping == ShippingCost::Unknown);
-        let shipping = text_input(t(lang, Key::ShippingPlaceholder), &shipping_text)
+        let default_text = match &item.status {
+            ItemStatus::Ready(p) => self.default_shipping(p, None),
+            _ => String::new(),
+        };
+        let placeholder = if default_text.is_empty() {
+            t(lang, Key::ShippingPlaceholder).to_owned()
+        } else {
+            default_text
+        };
+        let shipping = text_input(&placeholder, &shipping_text)
             .on_input_maybe((!running).then_some(move |s: String| Message::ShippingChanged(i, s)))
             .padding([8, 12])
             .size(14)
@@ -1168,17 +1176,38 @@ mod tests {
     }
 
     #[test]
-    fn invalid_shipping_keeps_previous_value_and_flags() {
-        let mut app = demo_app();
+    fn invalid_shipping_keeps_the_draft_flags_it_and_blocks_compare() {
+        let mut app = keyed(demo_app());
         let _ = app.update(Message::ShippingChanged(1, "150".into()));
-        app.stale = false;
         let _ = app.update(Message::ShippingChanged(1, "abc".into()));
-        assert_eq!(app.items[1].shipping_input, "150");
+        assert_eq!(app.items[1].shipping_input, "abc");
         assert!(app.items[1].shipping_invalid);
-        assert!(!app.stale);
+        assert!(shipping_override(&app.items[1]).is_none());
+        assert!(!app.can_compare());
         let _ = app.update(Message::ShippingChanged(1, "1.500".into()));
         assert!(!app.items[1].shipping_invalid);
         assert_eq!(app.items[1].shipping_input, "1.500");
+        assert!(app.can_compare());
+    }
+
+    #[test]
+    fn grouped_amount_can_be_typed_through_intermediate_states() {
+        let mut app = demo_app();
+        for typed in ["1", "1.", "1.5", "1.50", "1.500"] {
+            let _ = app.update(Message::ShippingChanged(1, typed.into()));
+            assert_eq!(app.items[1].shipping_input, typed);
+        }
+        assert!(!app.items[1].shipping_invalid);
+    }
+
+    #[test]
+    fn emptied_shipping_falls_back_to_the_default() {
+        let mut app = keyed(demo_app());
+        let _ = app.update(Message::ShippingChanged(1, "150".into()));
+        let _ = app.update(Message::ShippingChanged(1, String::new()));
+        assert_eq!(app.items[1].shipping_input, "");
+        assert!(!app.items[1].shipping_invalid);
+        assert!(shipping_override(&app.items[1]).is_none());
     }
 
     #[test]
