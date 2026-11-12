@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
@@ -6,6 +7,7 @@ from .protocol import ScrapeError
 _BAD_CATEGORIES = {"Cc", "Cf", "Zs", "Zl", "Zp"}
 _SITES = {"mercadolibre.com.uy": "mercadolibre", "temu.com": "temu"}
 _DEFAULT_PORTS = {None, 80, 443}
+_HOST_CHARS = re.compile(r"[a-z0-9.-]+")
 
 
 def _unsupported(url: str) -> ScrapeError:
@@ -26,7 +28,7 @@ def validate_url(url: str) -> tuple[str, str]:
         port = parts.port
     except ValueError as exc:
         raise _unsupported(url) from exc
-    if parts.scheme.lower() not in ("http", "https") or "@" in parts.netloc or port not in _DEFAULT_PORTS:
+    if not _HOST_CHARS.fullmatch(host) or parts.scheme.lower() not in ("http", "https") or "@" in parts.netloc or port not in _DEFAULT_PORTS:
         raise _unsupported(url)
     site = next((s for d, s in _SITES.items() if host == d or host.endswith("." + d)), None)
     if site is None:

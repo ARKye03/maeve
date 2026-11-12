@@ -4,6 +4,8 @@ from decimal import Decimal, InvalidOperation
 _USD_MARKERS = re.compile(r"U\$S|US\$|USD", re.IGNORECASE)
 _UYU_MARKERS = re.compile(r"UYU|\$U|\$", re.IGNORECASE)
 _NUMBER = re.compile(r"\d[\d.,]*")
+_MAX_CENTS = 2**63 - 1
+_MAX_COUNT = 2**32 - 1
 
 
 def _to_cents(value: Decimal) -> int:
@@ -54,18 +56,29 @@ def parse_price(text: str) -> tuple[int, str]:
 def number_to_cents(value: object) -> int:
     """Convert a machine-readable decimal (JSON-LD, meta tags) where "." is the decimal point."""
     try:
-        return _to_cents(Decimal(str(value).strip()))
-    except InvalidOperation as exc:
+        cents = _to_cents(Decimal(str(value).strip()))
+    except (InvalidOperation, OverflowError, ValueError) as exc:
         raise ValueError(f"unparseable number: {value!r}") from exc
+    if abs(cents) > _MAX_CENTS:
+        raise ValueError(f"number out of range: {value!r}")
+    return cents
 
 
 def parse_int(value: object) -> int | None:
+    """Non-negative count fitting the Rust u32, else None."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return int(value)
-    digits = re.sub(r"\D", "", str(value or ""))
-    return int(digits) if digits else None
+        try:
+            count = int(value)
+        except (OverflowError, ValueError):
+            return None
+    else:
+        digits = re.sub(r"\D", "", str(value or ""))
+        if not digits or len(digits) > 10:
+            return None
+        count = int(digits)
+    return count if 0 <= count <= _MAX_COUNT else None
 
 
 def parse_rating(value: object) -> float | None:

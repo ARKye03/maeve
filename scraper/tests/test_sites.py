@@ -147,6 +147,14 @@ def test_temu_selected_sku_in_url_picks_its_price():
     assert product["price_is_range"] is False
 
 
+def test_temu_uses_page_currency_not_the_bare_dollar_sign():
+    html = temu_page(
+        {"goodsName": "X", "minOnSalePriceStr": "$12.99", "minOnSalePrice": 1299},
+        localInfo={"currency": "USD"},
+    )
+    assert temu.parse(html, TEMU_URL)["price"] == {"cents": 1299, "currency": "USD"}
+
+
 def test_temu_missing_price_is_layout_error():
     with pytest.raises(ScrapeError) as err:
         temu.parse("<html><body>nothing</body></html>", TEMU_URL)

@@ -38,14 +38,15 @@ def _selected_sku(url: str) -> str | None:
 
 
 def _cents(text: object, minor: object, currency: str) -> tuple[int, str] | None:
-    """Price from the display string ("$ 230"); the integer minor-unit field is the fallback."""
+    """Minor-unit integer plus the page currency; the display string ("$ 230" is
+    ambiguous between UYU and USD) is only the fallback."""
+    if isinstance(minor, (int, float)) and not isinstance(minor, bool) and 0 < minor < 2**53:
+        return int(minor), currency
     if isinstance(text, str) and re.search(r"\d", text):
         try:
             return parse_price(text)
         except ValueError:
             pass
-    if isinstance(minor, (int, float)) and not isinstance(minor, bool):
-        return int(minor), currency
     return None
 
 

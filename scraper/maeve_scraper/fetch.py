@@ -37,7 +37,7 @@ class StealthPool:
     async def _get(self) -> AsyncStealthySession:
         async with self._lock:
             if self._session is None:
-                session = AsyncStealthySession(headless=True, network_idle=True)
+                session = AsyncStealthySession(headless=True, network_idle=True, max_pages=5)
                 await session.start()
                 self._session = session
             return self._session

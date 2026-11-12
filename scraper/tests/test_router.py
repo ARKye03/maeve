@@ -56,6 +56,8 @@ def test_accepts_and_rebuilds(url, site, safe):
         "https://www.temu.com/x\x00",
         "https://www.temu.com/x y",
         "https://www.temu.com/x​",
+        "https://evil.com\uff0f.temu.com/x",
+        "https://evil.com\u3002temu.com/x",
         "https://www.temu.com:8080/x",
         "https://www.temu.com:bad/x",
         "https://[::1/x",

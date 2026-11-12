@@ -134,12 +134,18 @@ def parse(html: str, url: str) -> dict:
         meta = sel.css('meta[itemprop="price"]::attr(content)').get()
         if meta:
             currency = sel.css('meta[itemprop="priceCurrency"]::attr(content)').get() or "UYU"
-            price = (number_to_cents(meta), currency, False)
+            try:
+                price = (number_to_cents(meta), currency, False)
+            except ValueError:
+                price = None
     if price is None:
         text = sel.css(".ui-pdp-price__second-line .andes-money-amount")
         if text:
-            cents, currency = parse_price(clean(text[0].get_all_text()))
-            price = (cents, currency, False)
+            try:
+                cents, currency = parse_price(clean(text[0].get_all_text()))
+                price = (cents, currency, False)
+            except ValueError:
+                price = None
 
     if not title or price is None:
         if "captcha" in html[:5000].lower():
