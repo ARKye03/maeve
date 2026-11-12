@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CostBreakdown, Currency, Money, Product, format_money};
+use super::cost::ShippingCost;
+use super::{CostBreakdown, Currency, Field, Money, Product, format_money};
 use crate::llm::schema::{AlignedCell, AlignedRow, Better};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,16 +84,19 @@ pub fn build_stat_table(
     costs: &[CostBreakdown],
     rows: &[AlignedRow],
 ) -> Vec<StatRow> {
-    let total = (0..products.len())
-        .map(|i| match costs.get(i) {
-            Some(c) => StatCell::exact(
-                format_money(Money {
+    let total = products
+        .iter()
+        .enumerate()
+        .map(|(i, p)| match costs.get(i) {
+            Some(c) if !p.missing.contains(&Field::Price) => StatCell {
+                raw: Some(format_money(Money {
                     cents: c.total,
                     currency: Currency::Uyu,
-                }),
-                c.total as f64,
-            ),
-            None => StatCell::missing(false),
+                })),
+                numeric: (c.shipping != ShippingCost::Unknown).then_some(c.total as f64),
+                ai_derived: false,
+            },
+            _ => StatCell::missing(false),
         })
         .collect();
 
@@ -124,9 +128,19 @@ pub fn build_stat_table(
             .enumerate()
             .map(|(i, p)| spec_cell(p, r.cells.get(i)))
             .collect();
-        row(RowKind::Spec, &r.label, cells, r.better)
+        let mut stat_row = row(RowKind::Spec, &r.label, cells, r.better);
+        if !units_agree(&r.cells) {
+            stat_row.best.clear();
+        }
+        stat_row
     }));
     table
+}
+
+/// Cells with differing units (e.g. "2 kg" vs "500 g") are not comparable, so no best is marked.
+fn units_agree(cells: &[AlignedCell]) -> bool {
+    let norm = |c: &AlignedCell| c.unit.as_deref().map(|u| u.trim().to_lowercase());
+    cells.windows(2).all(|w| norm(&w[0]) == norm(&w[1]))
 }
 
 /// `numeric` is trusted only when `spec_key` resolves to a real spec of the product.
@@ -270,6 +284,37 @@ mod tests {
                 cell(Some("Color"), Some(1.0)),
                 cell(Some("Color"), Some(2.0)),
             ],
+        }];
+        let table = build_stat_table(&products, &[cost(1), cost(2)], &rows);
+        assert!(find(&table, RowKind::Spec).best.is_empty());
+    }
+
+    #[test]
+    fn unknown_shipping_total_is_not_comparable() {
+        let products = [product(None, None, &[]), product(None, None, &[])];
+        let mut unknown = cost(90_000);
+        unknown.shipping = ShippingCost::Unknown;
+        let table = build_stat_table(&products, &[unknown, cost(95_000)], &[]);
+        let total = find(&table, RowKind::Total);
+        assert!(total.best.is_empty());
+        assert_eq!(total.cells[0].raw.as_deref(), Some("$900"));
+    }
+
+    #[test]
+    fn mixed_units_have_no_best() {
+        let products = [
+            product(None, None, &[("Peso", "2 kg")]),
+            product(None, None, &[("Peso", "500 g")]),
+        ];
+        let unit = |u: &str| AlignedCell {
+            spec_key: Some("Peso".into()),
+            numeric: Some(if u == "kg" { 2.0 } else { 500.0 }),
+            unit: Some(u.into()),
+        };
+        let rows = [AlignedRow {
+            label: "Peso".into(),
+            better: Better::Lower,
+            cells: vec![unit("kg"), unit("g")],
         }];
         let table = build_stat_table(&products, &[cost(1), cost(2)], &rows);
         assert!(find(&table, RowKind::Spec).best.is_empty());
