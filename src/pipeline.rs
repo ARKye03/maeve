@@ -42,8 +42,10 @@ pub struct CompareInput {
     pub judge_model: String,
 }
 
-/// `excluded` indices refer to `CompareInput::items`; `products`, `costs` and
-/// `advocates` are indexed by position among the products that survived.
+/// `excluded` indices refer to `CompareInput::items`. Everything else
+/// (`products`, `costs`, `advocates`, `judge` winner/scores/rows, `stats`) is
+/// indexed by position among the products that survived, i.e. the items not
+/// listed in `excluded`, in order.
 #[derive(Debug, Clone)]
 pub struct ComparisonResult {
     pub products: Vec<Product>,
