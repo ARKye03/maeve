@@ -206,7 +206,9 @@ impl App {
     pub(super) fn key_saved(&mut self, result: Result<String, String>) {
         match result {
             Ok(key) => {
-                self.draft.api_key.clear();
+                if self.draft.api_key.trim() == key {
+                    self.draft.api_key.clear();
+                }
                 self.key_notice = None;
                 self.set_api_key(Some(key));
             }

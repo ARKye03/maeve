@@ -388,8 +388,10 @@ impl App {
                     (Preset::Custom { name: a, .. }, Preset::Custom { name: b, .. }) => a.cmp(b),
                     _ => std::cmp::Ordering::Equal,
                 });
-                self.preset = saved;
-                self.preset_name.clear();
+                if !self.running() && is_ad_hoc(&self.preset) {
+                    self.preset = saved;
+                    self.preset_name.clear();
+                }
             }
             Err(e) => eprintln!("maeve: cannot save preset: {e}"),
         }

@@ -220,7 +220,9 @@ impl App {
             self.input = Some(record.input.clone());
         }
         self.result = Some(result);
-        self.stale = false;
+        self.stale = record
+            .as_ref()
+            .is_some_and(|r| r.input.cost != self.settings.cost);
         self.run = super::RunState::Idle;
         match (self.store.clone(), record) {
             (Some(store), Some(record)) => {
