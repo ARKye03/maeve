@@ -1,1 +1,1 @@
-{"author":{"id":"e8ccbc170af88335916e23a1b24e48c04b0a4af82e988d5245cc91e39d6a9e2c"},"ops":[{"type":3,"timestamp":1794492077,"nonce":"eKiFAPDHDdL19ZTsquiM/i78qZg=","message":"Not reached — the run stopped at `b88abcb`. Re-run /roadmap:impl once unblocked; landed work is picked up.","files":null}]}
+{"author":{"id":"e8ccbc170af88335916e23a1b24e48c04b0a4af82e988d5245cc91e39d6a9e2c"},"ops":[{"type":5,"timestamp":1794492077,"nonce":"lSIy34BYbEr7I1je8paS8n7m+a0=","added":null,"removed":["state:in-progress"]}]}
