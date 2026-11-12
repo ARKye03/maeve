@@ -1,10 +1,12 @@
 pub mod cost;
 pub mod money;
+pub mod stats;
 
 use serde::{Deserialize, Serialize};
 
 pub use cost::{CostBreakdown, CostSettings, FxRate, ShippingCost, TaxKind, TaxLine, landed_cost};
 pub use money::format_money;
+pub use stats::{RowKind, StatCell, StatRow, build_stat_table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
