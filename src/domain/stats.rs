@@ -138,7 +138,7 @@ pub fn build_stat_table(
 }
 
 /// Cells with differing units (e.g. "2 kg" vs "500 g") are not comparable, so no best is marked.
-fn units_agree(cells: &[AlignedCell]) -> bool {
+pub(crate) fn units_agree(cells: &[AlignedCell]) -> bool {
     let norm = |c: &AlignedCell| c.unit.as_deref().map(|u| u.trim().to_lowercase());
     cells.windows(2).all(|w| norm(&w[0]) == norm(&w[1]))
 }

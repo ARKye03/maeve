@@ -116,13 +116,13 @@ fn input_style(invalid: bool) -> impl Fn(&Theme, text_input::Status) -> text_inp
 }
 
 #[derive(Clone, Copy)]
-enum Tone {
+pub(super) enum Tone {
     Muted,
     Ok,
     Bad,
 }
 
-fn chip_style(tone: Tone) -> impl Fn(&Theme) -> container::Style {
+pub(super) fn chip_style(tone: Tone) -> impl Fn(&Theme) -> container::Style {
     move |theme| {
         let t = tokens(theme::is_dark(theme));
         let (bg, fg, border) = match tone {
@@ -224,7 +224,7 @@ async fn resolve_fx(
 }
 
 impl App {
-    fn running(&self) -> bool {
+    pub(super) fn running(&self) -> bool {
         matches!(self.run, RunState::Running { .. })
     }
 
@@ -477,14 +477,14 @@ impl App {
         }
     }
 
-    pub(super) fn on_pipeline(&mut self, event: PipelineEvent) {
+    pub(super) fn on_pipeline(&mut self, event: PipelineEvent) -> Task<Message> {
         if !self.running() {
-            return;
+            return Task::none();
         }
         match event {
             PipelineEvent::Scraped { item, result } => {
                 let Some(&i) = self.run_items.get(item) else {
-                    return;
+                    return Task::none();
                 };
                 self.items[i].status = match result {
                     Ok(p) => ItemStatus::Ready(Box::new(p)),
@@ -517,11 +517,7 @@ impl App {
                     *judging = true;
                 }
             }
-            PipelineEvent::Finished(Ok(result)) => {
-                self.result = Some(result);
-                self.stale = false;
-                self.run = RunState::Idle;
-            }
+            PipelineEvent::Finished(Ok(result)) => return self.finish_run(result),
             PipelineEvent::Finished(Err(e)) => {
                 self.run = RunState::Error(match e {
                     PipelineError::NotEnoughProducts => RunError::NotEnoughProducts,
@@ -530,6 +526,7 @@ impl App {
                 });
             }
         }
+        Task::none()
     }
 
     pub(super) fn retry(&mut self, i: usize) -> Task<Message> {

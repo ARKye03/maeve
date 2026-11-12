@@ -1,5 +1,6 @@
 mod header;
 mod input;
+mod results;
 pub mod snap;
 
 use std::fmt;
@@ -7,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iced::theme::Mode;
-use iced::widget::{column, container, scrollable, text};
+use iced::widget::{column, container, operation, scrollable, text};
 use iced::{Element, Length, Subscription, Task, Theme, system, window};
 
 use crate::demo::demo_comparison;
@@ -19,8 +20,10 @@ use crate::pipeline::{CompareInput, ComparisonResult, PipelineEvent};
 use crate::scrape::{ScrapeError, SidecarCommand, SidecarScraper};
 use crate::settings::{Settings, ThemePref, load_api_key};
 use crate::store::{Store, default_db_path};
-use crate::theme::{self, tokens};
+use crate::theme;
 use snap::DevEnv;
+
+const PAGE_SCROLL: &str = "page";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Screen {
@@ -118,6 +121,10 @@ pub enum Message {
     FxResolved(Result<FxRate, String>),
     Pipeline(Box<PipelineEvent>),
     Retry(usize),
+    ToggleDebate,
+    Rerun,
+    HistorySaved(Result<i64, String>),
+    ScrollSnapshot(f32),
     TakeSnapshot,
     Snapshot(window::Screenshot),
 }
@@ -129,6 +136,7 @@ pub struct App {
     pub input: Option<CompareInput>,
     pub result: Option<ComparisonResult>,
     pub stale: bool,
+    pub debate_open: bool,
     pub items: Vec<ItemState>,
     pub run: RunState,
     pub preset: Preset,
@@ -198,6 +206,7 @@ impl App {
             custom_presets: Vec::new(),
             fx: None,
             stale: false,
+            debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
             run_items: Vec::new(),
             scraper: Arc::new(SidecarScraper::new(SidecarCommand::default_uv(
@@ -229,6 +238,12 @@ impl App {
             tasks.push(Task::perform(load_key(), Message::ApiKeyLoaded));
         }
         if dev.snapshot.is_some() {
+            if let Some(y) = dev.scroll {
+                tasks.push(Task::perform(
+                    tokio::time::sleep(snap::SETTLE / 2),
+                    move |()| Message::ScrollSnapshot(y),
+                ));
+            }
             tasks.push(Task::perform(tokio::time::sleep(snap::SETTLE), |()| {
                 Message::TakeSnapshot
             }));
@@ -324,8 +339,16 @@ impl App {
             }
             Message::Compare => self.compare(),
             Message::FxResolved(fx) => self.fx_resolved(fx),
-            Message::Pipeline(event) => {
-                self.on_pipeline(*event);
+            Message::Pipeline(event) => self.on_pipeline(*event),
+            Message::ToggleDebate => {
+                self.toggle_debate();
+                Task::none()
+            }
+            Message::Rerun => self.rerun(),
+            Message::HistorySaved(result) => {
+                if let Err(e) = result {
+                    eprintln!("maeve: cannot save comparison: {e}");
+                }
                 Task::none()
             }
             Message::Retry(i) => self.retry(i),
@@ -334,6 +357,9 @@ impl App {
                     eprintln!("maeve: cannot save settings: {e}");
                 }
                 Task::none()
+            }
+            Message::ScrollSnapshot(y) => {
+                operation::snap_to(PAGE_SCROLL, scrollable::RelativeOffset { x: 0.0, y })
             }
             Message::TakeSnapshot => window::latest().then(|id| match id {
                 Some(id) => window::screenshot(id).map(Message::Snapshot),
@@ -352,26 +378,12 @@ impl App {
 
     pub fn view(&self) -> Element<'_, Message> {
         let lang = self.settings.lang;
-        let t_ = tokens(theme::is_dark(&self.theme()));
 
         let page: Element<'_, Message> = match self.screen {
             Screen::Compare => {
                 let mut page = column![self.input_card()].spacing(16);
-                if let Some(result) = &self.result {
-                    page = page.push(
-                        container(
-                            column![
-                                text(&result.products[result.judge.winner].title)
-                                    .size(18)
-                                    .color(t_.primary),
-                                text(&result.judge.verdict).style(theme::text_muted),
-                            ]
-                            .spacing(12),
-                        )
-                        .padding(24)
-                        .width(Length::Fill)
-                        .style(theme::card),
-                    );
+                if let Some(results) = self.results_card() {
+                    page = page.push(results);
                 }
                 page.into()
             }
@@ -390,7 +402,9 @@ impl App {
 
         column![
             header::view(lang, self.settings.theme, self.screen),
-            scrollable(container(page).padding(24).width(Length::Fill)).height(Length::Fill),
+            scrollable(container(page).padding(24).width(Length::Fill))
+                .id(PAGE_SCROLL)
+                .height(Length::Fill),
         ]
         .into()
     }

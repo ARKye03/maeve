@@ -46,6 +46,19 @@ pub enum Key {
     NoApiKey,
     NotEnoughProducts,
     ApiKeyRejected,
+    ResultVerdict,
+    ResultStats,
+    ResultCharts,
+    ResultDebate,
+    Stale,
+    Rerun,
+    ExcludedBanner,
+    RowRating,
+    RowReviews,
+    AiDerived,
+    LowerIsBetter,
+    DebateStrengths,
+    DebateAttacks,
 }
 
 impl Key {
@@ -87,6 +100,19 @@ impl Key {
         Key::NoApiKey,
         Key::NotEnoughProducts,
         Key::ApiKeyRejected,
+        Key::ResultVerdict,
+        Key::ResultStats,
+        Key::ResultCharts,
+        Key::ResultDebate,
+        Key::Stale,
+        Key::Rerun,
+        Key::ExcludedBanner,
+        Key::RowRating,
+        Key::RowReviews,
+        Key::AiDerived,
+        Key::LowerIsBetter,
+        Key::DebateStrengths,
+        Key::DebateAttacks,
     ];
 }
 
@@ -165,6 +191,35 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (NotEnoughProducts, En) => "At least 2 readable products are needed to compare.",
         (ApiKeyRejected, Es) => "Gemini rechazó tu clave. Revisala en Ajustes.",
         (ApiKeyRejected, En) => "Gemini rejected your key. Check it in Settings.",
+        (ResultVerdict, Es) => "Veredicto",
+        (ResultVerdict, En) => "Verdict",
+        (ResultStats, Es) => "Estadísticas",
+        (ResultStats, En) => "Stats",
+        (ResultCharts, Es) => "Gráficos",
+        (ResultCharts, En) => "Charts",
+        (ResultDebate, _) => "Debate",
+        (Stale, Es) => "desactualizado",
+        (Stale, En) => "outdated",
+        (Rerun, Es) => "Volver a ejecutar",
+        (Rerun, En) => "Re-run",
+        (ExcludedBanner, Es) => {
+            "Estos productos quedaron fuera de la comparación. Corregilos y volvé a Comparar."
+        }
+        (ExcludedBanner, En) => {
+            "These items were left out of the comparison. Fix them and Compare again."
+        }
+        (RowRating, Es) => "Valoración",
+        (RowRating, En) => "Rating",
+        (RowReviews, Es) => "Opiniones",
+        (RowReviews, En) => "Reviews",
+        (AiDerived, Es) => "valor interpretado por IA",
+        (AiDerived, En) => "value interpreted by AI",
+        (LowerIsBetter, Es) => "menor es mejor",
+        (LowerIsBetter, En) => "lower is better",
+        (DebateStrengths, Es) => "Puntos fuertes",
+        (DebateStrengths, En) => "Strengths",
+        (DebateAttacks, Es) => "Ataca a",
+        (DebateAttacks, En) => "Attacks",
     }
 }
 
