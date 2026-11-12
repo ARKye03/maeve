@@ -159,6 +159,9 @@ impl App {
     }
 
     pub(super) fn pasted_text(&mut self, i: usize, text: Option<String>) -> Task<Message> {
+        if self.paste_row != Some(i) {
+            return Task::none();
+        }
         let text = text.unwrap_or_default();
         let text = text.trim();
         if text.is_empty() {
@@ -173,6 +176,10 @@ impl App {
         i: usize,
         image: Result<PastedImage, Key>,
     ) -> Task<Message> {
+        // Row removal shifts `paste_row`, so a stale index no longer matches.
+        if self.paste_row != Some(i) {
+            return Task::none();
+        }
         match image {
             Ok((mime, data)) => self.start_extraction(i, vec![Part::Image { mime, data }]),
             Err(key) => self.paste_failed(i, key),
@@ -224,7 +231,7 @@ impl App {
         let Some(item) = self.items.get_mut(i) else {
             return Task::none();
         };
-        if running || !matches!(item.status, ItemStatus::Extracting | ItemStatus::Failed(_)) {
+        if running || !matches!(item.status, ItemStatus::Extracting) {
             return Task::none();
         }
         match result {
@@ -307,6 +314,11 @@ mod tests {
 
     fn keyed(mut app: App) -> App {
         app.set_api_key(Some("k".into()));
+        app
+    }
+
+    fn pasting(mut app: App) -> App {
+        app.paste_row = Some(1);
         app
     }
 
@@ -395,7 +407,7 @@ mod tests {
 
     #[test]
     fn pasted_text_starts_an_extraction() {
-        let mut app = keyed(failed_app());
+        let mut app = pasting(keyed(failed_app()));
         let text = Some("  Auriculares $ 1.200  ".to_owned());
         let task = app.update(Message::PastedText(1, text));
         assert_eq!(task.units(), 1);
@@ -406,7 +418,7 @@ mod tests {
 
     #[test]
     fn blank_clipboard_text_is_reported_without_a_request() {
-        let mut app = keyed(failed_app());
+        let mut app = pasting(keyed(failed_app()));
         for text in [None, Some("  \n".to_owned())] {
             let task = app.update(Message::PastedText(1, text));
             assert_eq!(task.units(), 0);
@@ -420,7 +432,7 @@ mod tests {
 
     #[test]
     fn pasting_without_an_api_key_reports_it() {
-        let mut app = failed_app();
+        let mut app = pasting(failed_app());
         let task = app.update(Message::PastedText(1, Some("x".into())));
         assert_eq!(task.units(), 0);
         assert!(matches!(app.items[1].status, ItemStatus::Failed(_)));
@@ -429,7 +441,7 @@ mod tests {
 
     #[test]
     fn pasted_image_starts_an_extraction_and_errors_are_reported() {
-        let mut app = keyed(failed_app());
+        let mut app = pasting(keyed(failed_app()));
         let task = app.update(Message::PastedImage(1, Err(Key::ClipboardNoImage)));
         assert_eq!(task.units(), 0);
         assert!(app.items[1].paste_error.is_some());
@@ -527,5 +539,28 @@ mod tests {
         let png = encode_png(2, 1, &[255, 0, 0, 255, 0, 255, 0, 255]).unwrap();
         assert_eq!(&png[..4], b"\x89PNG");
         assert!(encode_png(2, 2, &[0; 4]).is_none());
+    }
+
+    #[test]
+    fn pasted_data_for_a_shifted_row_is_dropped() {
+        let mut app = pasting(keyed(failed_app()));
+        app.items.push(ItemState::new(""));
+        app.items.push(ItemState::new(""));
+        app.items[2].url = TEMU_URL.into();
+        app.items[2].status =
+            ItemStatus::Failed(ScrapeError::new(ScrapeErrorKind::Blocked, "blocked"));
+        let task = app.update(Message::PastedText(2, Some("x".into())));
+        assert_eq!(task.units(), 0);
+        assert!(matches!(app.items[2].status, ItemStatus::Failed(_)));
+        let image = ("image/png".to_owned(), vec![1]);
+        assert_eq!(app.update(Message::PastedImage(2, Ok(image))).units(), 0);
+        assert!(matches!(app.items[2].status, ItemStatus::Failed(_)));
+    }
+
+    #[test]
+    fn late_extraction_does_not_overwrite_a_newer_failure() {
+        let mut app = failed_app();
+        let _ = app.update(Message::Extracted(1, Ok(Box::new(product()))));
+        assert!(matches!(app.items[1].status, ItemStatus::Failed(_)));
     }
 }
