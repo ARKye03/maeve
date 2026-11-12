@@ -33,6 +33,8 @@ pub enum LlmError {
     Auth,
     #[error("rate limited by the API")]
     RateLimited,
+    #[error("the model is overloaded")]
+    Overloaded,
     #[error("invalid model output: {0}")]
     InvalidOutput(String),
     #[error("http error: {0}")]

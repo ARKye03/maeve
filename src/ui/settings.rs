@@ -1,6 +1,6 @@
 //! Settings screen: Gemini key (Keychain only), models, costs, language and theme.
 
-use iced::widget::{Space, button, column, container, row, text, text_input, toggler};
+use iced::widget::{Space, button, column, container, pick_list, row, text, text_input};
 use iced::{Alignment, Element, Font, Length, Task};
 
 use super::header::{segment, segmented};
@@ -145,6 +145,39 @@ fn parse_fx(raw: &str) -> Option<Option<f64>> {
     validate_rate(rate).ok().map(Some)
 }
 
+/// Offered until the API lists what this key can use.
+const FALLBACK_MODELS: &[&str] = &["gemini-flash-latest", "gemini-flash-lite-latest"];
+
+/// One entry of the model picker; `id: None` is "Custom…".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelOption {
+    id: Option<String>,
+    label: String,
+}
+
+impl ModelOption {
+    fn model(id: &str) -> Self {
+        Self {
+            id: Some(id.to_owned()),
+            label: id.to_owned(),
+        }
+    }
+}
+
+impl std::fmt::Display for ModelOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+fn model_slot(field: SettingsField) -> Option<usize> {
+    match field {
+        SettingsField::AdvocateModel => Some(0),
+        SettingsField::JudgeModel => Some(1),
+        _ => None,
+    }
+}
+
 fn parse_model(raw: &str) -> Option<String> {
     let model = raw.trim();
     (!model.is_empty() && !model.contains(char::is_whitespace)).then(|| model.to_owned())
@@ -229,9 +262,97 @@ impl App {
                 self.key_notice = None;
                 self.key_editing = false;
                 self.set_api_key(Some(key));
+                self.models_requested = false;
             }
             Err(notice) => self.key_notice = Some(notice),
         }
+    }
+
+    pub(super) fn load_models(&mut self) -> Task<Message> {
+        let Some(client) = self.llm.as_ref().map(|h| std::sync::Arc::clone(&h.client)) else {
+            return Task::none();
+        };
+        if self.models_requested {
+            return Task::none();
+        }
+        self.models_requested = true;
+        Task::perform(
+            async move { client.list_models().await.map_err(|e| e.to_string()) },
+            Message::ModelsLoaded,
+        )
+    }
+
+    pub(super) fn models_loaded(&mut self, result: Result<Vec<String>, String>) {
+        match result {
+            Ok(models) if !models.is_empty() => self.models = models,
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("maeve: cannot list Gemini models: {e}");
+                self.models_requested = false;
+            }
+        }
+    }
+
+    pub(super) fn model_picked(
+        &mut self,
+        field: SettingsField,
+        option: ModelOption,
+    ) -> Task<Message> {
+        let Some(slot) = model_slot(field) else {
+            return Task::none();
+        };
+        match option.id {
+            Some(id) => {
+                self.custom_model[slot] = false;
+                self.settings_input(field, id)
+            }
+            None => {
+                self.custom_model[slot] = true;
+                Task::none()
+            }
+        }
+    }
+
+    fn model_row<'a>(&'a self, label: &'a str, field: SettingsField) -> Element<'a, Message> {
+        let lang = self.settings.lang;
+        let Some(slot) = model_slot(field) else {
+            return self.field_row(label, field, None);
+        };
+        let current = match field {
+            SettingsField::AdvocateModel => &self.settings.advocate_model,
+            _ => &self.settings.judge_model,
+        };
+        let known: Vec<String> = if self.models.is_empty() {
+            FALLBACK_MODELS.iter().map(|m| (*m).to_owned()).collect()
+        } else {
+            self.models.clone()
+        };
+        let custom = self.custom_model[slot] || !known.contains(current);
+        let custom_option = ModelOption {
+            id: None,
+            label: t(lang, Key::ModelCustom).to_owned(),
+        };
+        let selected = if custom {
+            custom_option.clone()
+        } else {
+            ModelOption::model(current)
+        };
+        let mut options: Vec<ModelOption> = known.iter().map(|m| ModelOption::model(m)).collect();
+        options.push(custom_option);
+
+        let picker = pick_list(options, Some(selected), move |o| {
+            Message::ModelPicked(field, o)
+        })
+        .padding([8, 12])
+        .text_size(14)
+        .width(Length::Fill)
+        .style(theme::select)
+        .menu_style(theme::select_menu);
+        let mut control = column![picker].spacing(8);
+        if custom {
+            control = control.push(self.text_field("gemini-…", field, true));
+        }
+        self.labelled(label, control, None, self.draft.is_invalid(field))
     }
 
     pub(super) fn edit_key(&mut self, editing: bool) {
@@ -407,16 +528,11 @@ impl App {
         let card = column![
             section_label(t(lang, Key::SettingsGemini)),
             key_row,
-            self.field_row(
+            self.model_row(
                 t(lang, Key::SettingsAdvocateModel),
                 SettingsField::AdvocateModel,
-                None
             ),
-            self.field_row(
-                t(lang, Key::SettingsJudgeModel),
-                SettingsField::JudgeModel,
-                None
-            ),
+            self.model_row(t(lang, Key::SettingsJudgeModel), SettingsField::JudgeModel),
             self.field_row(t(lang, Key::SettingsRpm), SettingsField::Rpm, None),
         ]
         .spacing(16);
@@ -431,24 +547,34 @@ impl App {
         let lang = self.settings.lang;
         let regimen_on = self.settings.cost.regimen_simplificado;
 
-        let toggle = container(toggler(regimen_on).on_toggle(|on| {
+        let pick = |regimen: bool| {
             let mut next = self.settings.clone();
-            next.cost.regimen_simplificado = on;
+            next.cost.regimen_simplificado = regimen;
             Message::SettingsChanged(Box::new(next))
-        }))
-        .padding([8, 0]);
-        let regimen_percent = self.labelled(
-            t(lang, Key::SettingsRegimenPercent),
-            self.text_field("", SettingsField::Regimen, regimen_on),
-            None,
-            self.draft.is_invalid(SettingsField::Regimen),
-        );
+        };
+        let tax_kind = segmented([
+            segment(t(lang, Key::TaxIva).into(), !regimen_on, pick(false)),
+            segment(t(lang, Key::SettingsRegimen).into(), regimen_on, pick(true)),
+        ]);
+        let tax_percent = if regimen_on {
+            self.field_row(
+                t(lang, Key::SettingsRegimenPercent),
+                SettingsField::Regimen,
+                None,
+            )
+        } else {
+            self.field_row(t(lang, Key::SettingsIva), SettingsField::Iva, None)
+        };
 
         let card = column![
             section_label(t(lang, Key::SettingsCosts)),
-            self.field_row(t(lang, Key::SettingsIva), SettingsField::Iva, None),
-            self.labelled(t(lang, Key::SettingsRegimen), toggle, None, false),
-            regimen_percent,
+            self.labelled(
+                t(lang, Key::SettingsTemuTax),
+                row![tax_kind],
+                Some(t(lang, Key::SettingsTemuTaxHint).to_owned()),
+                false
+            ),
+            tax_percent,
             self.field_row(
                 t(lang, Key::SettingsMlThreshold),
                 SettingsField::Threshold,
@@ -745,6 +871,35 @@ mod tests {
         let _ = app.update(Message::ApiKeySaved(Ok("new".into())));
         assert!(!app.key_editing);
         assert_eq!(app.llm.as_ref().unwrap().key, "new");
+    }
+
+    #[test]
+    fn picking_a_model_saves_it_and_custom_keeps_the_value() {
+        let mut app = app();
+        let _ = app.update(Message::ModelPicked(
+            SettingsField::JudgeModel,
+            ModelOption::model("gemini-flash-lite-latest"),
+        ));
+        assert_eq!(app.settings.judge_model, "gemini-flash-lite-latest");
+        assert!(!app.custom_model[1]);
+
+        let custom = ModelOption {
+            id: None,
+            label: "Custom…".into(),
+        };
+        let _ = app.update(Message::ModelPicked(SettingsField::JudgeModel, custom));
+        assert!(app.custom_model[1]);
+        assert_eq!(app.settings.judge_model, "gemini-flash-lite-latest");
+    }
+
+    #[test]
+    fn listed_models_replace_the_fallback_and_errors_allow_a_retry() {
+        let mut app = app();
+        app.models_requested = true;
+        let _ = app.update(Message::ModelsLoaded(Err("offline".into())));
+        assert!(!app.models_requested && app.models.is_empty());
+        let _ = app.update(Message::ModelsLoaded(Ok(vec!["gemini-x".into()])));
+        assert_eq!(app.models, ["gemini-x"]);
     }
 
     #[test]

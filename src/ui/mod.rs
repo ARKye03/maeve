@@ -2,6 +2,7 @@ mod browser;
 mod header;
 mod history;
 mod input;
+mod loading;
 mod paste;
 mod results;
 mod settings;
@@ -10,7 +11,7 @@ pub mod snap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iced::theme::Mode;
 use iced::widget::{column, container, operation, scrollable};
@@ -79,6 +80,7 @@ pub enum RunError {
     NoApiKey,
     NotEnoughProducts,
     Auth,
+    Overloaded,
     Other(String),
 }
 
@@ -138,6 +140,9 @@ pub enum Message {
     PastedImage(usize, Result<paste::PastedImage, Key>),
     Extracted(usize, Result<Box<Product>, String>),
     OpenInBrowser(usize),
+    Tick(Instant),
+    ModelsLoaded(Result<Vec<String>, String>),
+    ModelPicked(SettingsField, settings::ModelOption),
     BrowserPage(Box<crate::bridge::Page>),
     ToggleDebate,
     Rerun,
@@ -188,6 +193,15 @@ pub struct App {
     pub key_busy: bool,
     /// Shows the key input even though a key is configured.
     pub key_editing: bool,
+    /// Animation clock: frames come from `Message::Tick` while something loads.
+    now: Instant,
+    anim_start: Instant,
+    phrase_seed: usize,
+    /// Models offered in Settings; filled from the API once a key exists.
+    models: Vec<String>,
+    models_requested: bool,
+    /// Advocate / judge model picker is on "Custom…".
+    custom_model: [bool; 2],
     api_key: Option<String>,
     run_items: Vec<usize>,
     scraper: Arc<SidecarScraper>,
@@ -282,6 +296,12 @@ impl App {
             key_notice: None,
             key_busy: false,
             key_editing: false,
+            now: Instant::now(),
+            anim_start: Instant::now(),
+            phrase_seed: 0,
+            models: Vec::new(),
+            models_requested: false,
+            custom_model: [false; 2],
             stale: false,
             debate_open: dev.debate,
             api_key: dev.gemini_key.clone(),
@@ -299,6 +319,9 @@ impl App {
         }
         if app.dev.failed {
             app.show_failed_row();
+        }
+        if app.dev.loading {
+            app.show_loading();
         }
         if app.dev.demo {
             app.history = crate::demo::demo_history();
@@ -377,6 +400,9 @@ impl App {
                     self.history_confirm = None;
                     self.history_error = false;
                     return self.load_history();
+                }
+                if screen == Screen::Settings {
+                    return self.load_models();
                 }
                 Task::none()
             }
@@ -490,6 +516,15 @@ impl App {
                 Task::none()
             }
             Message::BrowserPage(page) => self.browser_page(*page),
+            Message::ModelsLoaded(result) => {
+                self.models_loaded(result);
+                Task::none()
+            }
+            Message::ModelPicked(field, option) => self.model_picked(field, option),
+            Message::Tick(now) => {
+                self.now = now;
+                Task::none()
+            }
             Message::Saved(result) => {
                 if let Err(e) = result {
                     eprintln!("maeve: cannot save settings: {e}");
@@ -520,7 +555,9 @@ impl App {
         let page: Element<'_, Message> = match self.screen {
             Screen::Compare => {
                 let mut page = column![self.input_card()].spacing(16);
-                if let Some(results) = self.results_card() {
+                if let Some(loading) = self.loading_card() {
+                    page = page.push(loading);
+                } else if let Some(results) = self.results_card() {
                     page = page.push(results);
                 }
                 page.into()
@@ -557,7 +594,7 @@ impl App {
         } else {
             browser::subscription()
         };
-        Subscription::batch([theme, drops, bridge])
+        Subscription::batch([theme, drops, bridge, self.frames()])
     }
 }
 

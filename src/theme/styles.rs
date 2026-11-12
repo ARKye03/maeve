@@ -1,4 +1,5 @@
-use iced::widget::{button, container, progress_bar, text, text_input};
+use iced::overlay::menu;
+use iced::widget::{button, container, pick_list, progress_bar, text, text_input};
 use iced::{Background, Border, Color, Shadow, Theme, Vector};
 
 use super::{RADIUS, Tokens, is_dark, tokens};
@@ -166,6 +167,35 @@ pub fn input(theme: &Theme, status: text_input::Status) -> text_input::Style {
             ..style
         },
         _ => style,
+    }
+}
+
+/// Same look as `input`, so dropdowns sit flush with text fields.
+pub fn select(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let t = tk(theme);
+    let border_color = match status {
+        pick_list::Status::Opened { .. } => t.ring,
+        pick_list::Status::Hovered => mix(t.input, t.foreground, 0.25),
+        pick_list::Status::Active => t.input,
+    };
+    pick_list::Style {
+        text_color: t.foreground,
+        placeholder_color: t.muted_foreground,
+        handle_color: t.muted_foreground,
+        background: Background::Color(t.background),
+        border: rounded(1.0, border_color),
+    }
+}
+
+pub fn select_menu(theme: &Theme) -> menu::Style {
+    let t = tk(theme);
+    menu::Style {
+        background: Background::Color(t.card),
+        border: rounded(1.0, t.border),
+        text_color: t.foreground,
+        selected_text_color: t.accent_foreground,
+        selected_background: Background::Color(t.accent),
+        shadow: shadow(),
     }
 }
 

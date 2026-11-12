@@ -480,6 +480,11 @@ impl App {
             }
         }
         self.paste_row = None;
+        self.anim_start = std::time::Instant::now();
+        self.now = self.anim_start;
+        self.phrase_seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos() as usize);
         self.run = RunState::Running {
             advocates_done: 0,
             waiting: None,
@@ -602,6 +607,7 @@ impl App {
                 self.run = RunState::Error(match e {
                     PipelineError::NotEnoughProducts => RunError::NotEnoughProducts,
                     PipelineError::Llm(LlmError::Auth) => RunError::Auth,
+                    PipelineError::Llm(LlmError::Overloaded) => RunError::Overloaded,
                     other => RunError::Other(other.to_string()),
                 });
             }
@@ -621,7 +627,7 @@ impl App {
         self.compare()
     }
 
-    fn progress_text(&self) -> Option<String> {
+    pub(super) fn progress_text(&self) -> Option<String> {
         let lang = self.settings.lang;
         let RunState::Running {
             advocates_done,
@@ -823,6 +829,17 @@ impl App {
                     col = col.push(text(error.clone()).size(13).color(t_.destructive));
                 }
             }
+            ItemStatus::Scraping | ItemStatus::Extracting => {
+                col = col.push(
+                    container(super::loading::bar(
+                        t_,
+                        self.pulse(),
+                        Length::Fixed(340.0),
+                        12.0,
+                    ))
+                    .padding([4, 0]),
+                );
+            }
             ItemStatus::Ready(p) => {
                 if let Some(b) = &breakdown {
                     col = col.push(
@@ -898,21 +915,15 @@ impl App {
         ]
         .spacing(16)
         .align_y(Alignment::Center);
-        match &self.run {
-            RunState::Error(e) => {
-                let msg = match e {
-                    RunError::NoApiKey => t(lang, Key::NoApiKey).to_owned(),
-                    RunError::NotEnoughProducts => t(lang, Key::NotEnoughProducts).to_owned(),
-                    RunError::Auth => t(lang, Key::ApiKeyRejected).to_owned(),
-                    RunError::Other(m) => m.clone(),
-                };
-                action = action.push(text(msg).size(13).color(t_.destructive));
-            }
-            _ => {
-                if let Some(line) = self.progress_text() {
-                    action = action.push(text(line).size(13).style(theme::text_muted));
-                }
-            }
+        if let RunState::Error(e) = &self.run {
+            let msg = match e {
+                RunError::NoApiKey => t(lang, Key::NoApiKey).to_owned(),
+                RunError::NotEnoughProducts => t(lang, Key::NotEnoughProducts).to_owned(),
+                RunError::Auth => t(lang, Key::ApiKeyRejected).to_owned(),
+                RunError::Overloaded => t(lang, Key::GeminiOverloaded).to_owned(),
+                RunError::Other(m) => m.clone(),
+            };
+            action = action.push(text(msg).size(13).color(t_.destructive));
         }
         card = card.push(action);
 
@@ -1155,7 +1166,7 @@ mod tests {
         );
         assert_eq!(
             app.progress_text().unwrap(),
-            "Defensores 0/2 \u{00B7} esperando límite de Gemini (12 s)"
+            "Defensores 0/2 \u{00B7} Gemini está ocupado, reintentando (12 s)"
         );
         pipeline(&mut app, PipelineEvent::AdvocateDone { item: 0 });
         assert_eq!(app.progress_text().unwrap(), "Defensores 1/2");
