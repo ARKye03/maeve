@@ -68,7 +68,9 @@ fn to_uyu_cents(m: Money, fx: &FxRate) -> i64 {
 }
 
 fn apply_bp(base: i64, bp: u32) -> i64 {
-    (base * i64::from(bp) + 5_000).div_euclid(10_000)
+    base.saturating_mul(i64::from(bp))
+        .saturating_add(5_000)
+        .div_euclid(10_000)
 }
 
 pub fn landed_cost(
@@ -107,7 +109,7 @@ pub fn landed_cost(
             Some(TaxLine {
                 kind,
                 bp,
-                amount: apply_bp(product + shipping_cents, bp),
+                amount: apply_bp(product.saturating_add(shipping_cents), bp),
             })
         }
     };
@@ -118,7 +120,9 @@ pub fn landed_cost(
     CostBreakdown {
         product,
         shipping,
-        total: product + shipping_cents + tax.map_or(0, |t| t.amount),
+        total: product
+            .saturating_add(shipping_cents)
+            .saturating_add(tax.map_or(0, |t| t.amount)),
         tax,
         converted,
     }
