@@ -332,12 +332,16 @@ impl App {
 
     pub fn boot() -> (Self, Task<Message>) {
         let dev = DevEnv::from_env();
-        let mut tasks = vec![
-            system::theme().map(Message::SystemTheme),
+        // Demo mode never touches the real database: screenshots must not depend on
+        // (or overwrite) the user's own settings and history.
+        let booted = if dev.demo {
+            Task::done(Message::Booted(None, Box::default()))
+        } else {
             Task::perform(open_store(), |(store, settings)| {
                 Message::Booted(store, settings)
-            }),
-        ];
+            })
+        };
+        let mut tasks = vec![system::theme().map(Message::SystemTheme), booted];
         if dev.snapshot.is_none() && dev.gemini_key.is_none() {
             tasks.push(Task::perform(load_key(), Message::ApiKeyLoaded));
         }

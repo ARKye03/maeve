@@ -2,6 +2,8 @@
 
 Maeve compares product listings from Mercado Libre Uruguay and TEMU and tells you which one to buy. It reads each link and works out what the product really costs delivered in Uruguay: shipping, IVA or the simplified import regime, and the exchange rate. Then Gemini argues for each product and a judge model picks the winner. Comparisons are saved on your computer.
 
+![Maeve comparing a Mercado Libre and a TEMU mini PC](.github/assets/preview.avif)
+
 ## Setup
 
 You need Rust (edition 2024), [`uv`](https://docs.astral.sh/uv/) and a Gemini API key.
